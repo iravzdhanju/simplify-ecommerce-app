@@ -30,35 +30,37 @@ export const navItems: NavItem[] = [
     isActive: false,
     items: [] // No child items
   },
-  {
+  // Only show Account in development mode
+  ...(process.env.NODE_ENV === 'development' ? [{
     title: 'Account',
     url: '#', // Placeholder as there is no direct link for the parent
-    icon: 'billing',
+    icon: 'billing' as const,
     isActive: true,
 
     items: [
       {
         title: 'Profile',
         url: '/dashboard/profile',
-        icon: 'userPen',
-        shortcut: ['m', 'm']
+        icon: 'userPen' as const,
+        shortcut: ['m', 'm'] as [string, string]
       },
       {
         title: 'Login',
-        shortcut: ['l', 'l'],
+        shortcut: ['l', 'l'] as [string, string],
         url: '/',
-        icon: 'login'
+        icon: 'login' as const
       }
     ]
-  },
-  {
+  }] : []),
+  // Only show Kanban in development mode
+  ...(process.env.NODE_ENV === 'development' ? [{
     title: 'Kanban',
     url: '/dashboard/kanban',
-    icon: 'kanban',
-    shortcut: ['k', 'k'],
+    icon: 'kanban' as const,
+    shortcut: ['k', 'k'] as [string, string],
     isActive: false,
     items: [] // No child items
-  }
+  }] : [])
 ];
 
 export interface SaleUser {
