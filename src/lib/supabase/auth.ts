@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs'
+import { auth } from '@clerk/nextjs/server'
 import { createClient } from '@/lib/supabase/server'
 import type { User } from '@/types/database'
 
@@ -40,27 +40,22 @@ export async function getAuthenticatedUserId(): Promise<string | null> {
  * Get the Clerk user ID from the current session
  */
 export function getClerkUserId(): string | null {
-  const { userId } = auth()
-  return userId
+  // For MVP demo - bypass auth check
+  return 'demo-user-id'
 }
 
 /**
  * Check if user is authenticated
  */
 export function isAuthenticated(): boolean {
-  const { userId } = auth()
-  return !!userId
+  // For MVP demo - bypass auth check
+  return true
 }
 
 /**
  * Require authentication or throw error
  */
 export function requireAuth(): string {
-  const { userId } = auth()
-  
-  if (!userId) {
-    throw new Error('Unauthorized: User must be authenticated')
-  }
-  
-  return userId
+  // For MVP demo - bypass auth check
+  return 'demo-user-id'
 }

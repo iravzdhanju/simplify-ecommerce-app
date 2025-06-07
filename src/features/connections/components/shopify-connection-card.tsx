@@ -12,6 +12,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
+import { apiRequest } from '@/lib/api-url'
 import { 
   Store, 
   Plus, 
@@ -74,7 +75,7 @@ export default function ShopifyConnectionCard({
       }
 
       // Initiate OAuth flow
-      const response = await fetch('/api/auth/shopify', {
+      const response = await apiRequest('/api/auth/shopify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -114,7 +115,7 @@ export default function ShopifyConnectionCard({
     }
 
     try {
-      const response = await fetch(`/api/platform-connections/${connectionId}`, {
+      const response = await apiRequest(`/api/platform-connections/${connectionId}`, {
         method: 'DELETE'
       })
 
@@ -132,7 +133,7 @@ export default function ShopifyConnectionCard({
 
   const handleTest = async (connectionId: string) => {
     try {
-      const response = await fetch(`/api/platform-connections/${connectionId}/test`)
+      const response = await apiRequest(`/api/platform-connections/${connectionId}/test`)
       const data = await response.json()
       
       if (data.success) {

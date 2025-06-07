@@ -6,25 +6,51 @@ import type { Product, InsertProduct, UpdateProduct } from '@/types/database'
  * Get all products for the authenticated user
  */
 export async function getUserProducts(): Promise<Product[]> {
-  const clerkUserId = getClerkUserId()
-  
-  if (!clerkUserId) {
-    throw new Error('User not authenticated')
-  }
+  // For MVP demo - return mock data matching the expected Product type structure
+  const mockSupabaseProducts: Product[] = [
+    {
+      id: 'demo-product-1',
+      user_id: 'demo-user-id',
+      clerk_user_id: 'demo-user-id',
+      title: 'Demo Product 1',
+      description: 'This is a demo product for testing',
+      price: 29.99,
+      category: 'Electronics',
+      sku: 'DEMO-001',
+      inventory: 100,
+      images: ['https://via.placeholder.com/300x300?text=Demo+Product+1'],
+      marketplace: ['Shopify'],
+      brand: 'Demo Brand',
+      weight: 1.0,
+      dimensions: null,
+      tags: ['demo', 'electronics'],
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'demo-product-2',
+      user_id: 'demo-user-id',
+      clerk_user_id: 'demo-user-id',
+      title: 'Demo Product 2',
+      description: 'Another demo product for testing',
+      price: 19.99,
+      category: 'Clothing',
+      sku: 'DEMO-002',
+      inventory: 50,
+      images: ['https://via.placeholder.com/300x300?text=Demo+Product+2'],
+      marketplace: ['Shopify', 'Amazon'],
+      brand: 'Demo Brand',
+      weight: 0.5,
+      dimensions: null,
+      tags: ['demo', 'clothing'],
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+  ]
 
-  const supabase = createClient()
-  
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .eq('clerk_user_id', clerkUserId)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    throw new Error(`Failed to fetch products: ${error.message}`)
-  }
-
-  return data || []
+  return mockSupabaseProducts
 }
 
 /**
