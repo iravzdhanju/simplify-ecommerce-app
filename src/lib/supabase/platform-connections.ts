@@ -193,11 +193,18 @@ export async function deletePlatformConnection(connectionId: string): Promise<vo
 /**
  * Test a platform connection
  */
-export async function testPlatformConnection(connectionId: string): Promise<boolean> {
+export async function testPlatformConnection(connectionId: string): Promise<{
+  success: boolean
+  message: string
+  data?: any
+}> {
   const connection = await getPlatformConnection(connectionId)
   
   if (!connection) {
-    throw new Error('Platform connection not found')
+    return {
+      success: false,
+      message: 'Platform connection not found'
+    }
   }
 
   try {
@@ -205,16 +212,39 @@ export async function testPlatformConnection(connectionId: string): Promise<bool
     const credentials = await decryptCredentials(connection.credentials)
     
     if (connection.platform === Platform.SHOPIFY) {
-      return await testShopifyConnection(credentials as ShopifyCredentials)
+      const isValid = await testShopifyConnection(credentials as ShopifyCredentials)
+      return {
+        success: isValid,
+        message: isValid ? 'Shopify connection is working' : 'Shopify connection failed',
+        data: { platform: 'shopify', shop_domain: credentials.shop_domain }
+      }
     } else if (connection.platform === Platform.AMAZON) {
-      return await testAmazonConnection(credentials as AmazonCredentials)
+      const isValid = await testAmazonConnection(credentials as AmazonCredentials)
+      return {
+        success: isValid,
+        message: isValid ? 'Amazon connection is working' : 'Amazon connection failed',
+        data: { platform: 'amazon' }
+      }
     }
     
-    return false
+    return {
+      success: false,
+      message: 'Unsupported platform'
+    }
   } catch (error) {
     console.error(`Failed to test ${connection.platform} connection:`, error)
-    return false
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Connection test failed'
+    }
   }
+}
+
+/**
+ * Get a platform connection by ID (alias for getPlatformConnection)
+ */
+export async function getPlatformConnectionById(connectionId: string): Promise<PlatformConnection | null> {
+  return getPlatformConnection(connectionId)
 }
 
 /**
