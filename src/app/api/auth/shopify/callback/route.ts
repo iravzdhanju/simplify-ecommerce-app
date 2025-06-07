@@ -1,74 +1,94 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createShopifyOAuth } from '@/lib/shopify/oauth'
 import { requireAuth } from '@/lib/supabase/auth'
 
-/**
- * GET /api/auth/shopify/callback
- * Handle Shopify OAuth callback
- */
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    
-    const shop = searchParams.get('shop')
     const code = searchParams.get('code')
     const state = searchParams.get('state')
-    const hmac = searchParams.get('hmac')
-    const timestamp = searchParams.get('timestamp')
-    
-    // Basic validation
-    if (!shop || !code || !state) {
+    const shop = searchParams.get('shop')
+    const error = searchParams.get('error')
+
+    if (error) {
+      console.error('Shopify OAuth error:', error)
       return NextResponse.redirect(
-        new URL('/dashboard?error=invalid_callback', req.url)
+        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/connections?error=${encodeURIComponent(error)}`
       )
     }
+
+    if (!code || !state || !shop) {
+      return NextResponse.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/connections?error=missing_parameters`
+      )
+    }
+
+    // Verify state matches expected format (clerkUserId-timestamp)
+    const [clerkUserId] = state.split('-')
+    const currentUserId = requireAuth()
     
-    // Get stored state from query params or session
-    // In production, this should be retrieved from a secure store
-    const storedState = searchParams.get('stored_state') || state
-    const connectionName = searchParams.get('connection_name') || `${shop} Store`
-    
-    try {
-      const shopifyOAuth = createShopifyOAuth()
-      
-      // Handle the OAuth callback
-      const credentials = await shopifyOAuth.handleCallback(
-        shop,
+    if (clerkUserId !== currentUserId) {
+      return NextResponse.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/connections?error=invalid_state`
+      )
+    }
+
+    // Exchange code for access token
+    const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: process.env.SHOPIFY_CLIENT_ID,
+        client_secret: process.env.SHOPIFY_CLIENT_SECRET,
         code,
-        state,
-        storedState,
-        hmac || undefined,
-        timestamp || undefined
-      )
-      
-      // Store the connection
-      const connection = await shopifyOAuth.storeConnection(
-        credentials,
-        connectionName,
-        {
-          auto_sync: false,
-          sync_inventory: true,
-          sync_prices: true,
-          sync_images: true,
-        }
-      )
-      
-      // Redirect to success page
+      }),
+    })
+
+    if (!tokenResponse.ok) {
+      console.error('Failed to exchange code for token:', await tokenResponse.text())
       return NextResponse.redirect(
-        new URL(`/dashboard?success=shopify_connected&connection=${connection.id}`, req.url)
-      )
-    } catch (oauthError) {
-      console.error('OAuth callback error:', oauthError)
-      
-      return NextResponse.redirect(
-        new URL(`/dashboard?error=oauth_failed&message=${encodeURIComponent(oauthError.message)}`, req.url)
+        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/connections?error=token_exchange_failed`
       )
     }
-  } catch (error) {
-    console.error('GET /api/auth/shopify/callback error:', error)
-    
+
+    const tokenData = await tokenResponse.json()
+    const { access_token, scope } = tokenData
+
+    // Test the connection by making a simple API call
+    const testResponse = await fetch(`https://${shop}/admin/api/2023-10/shop.json`, {
+      headers: {
+        'X-Shopify-Access-Token': access_token,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!testResponse.ok) {
+      console.error('Failed to test Shopify connection:', await testResponse.text())
+      return NextResponse.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/connections?error=connection_test_failed`
+      )
+    }
+
+    const shopData = await testResponse.json()
+
+    // For MVP demo - log the successful connection instead of saving to database
+    console.log('Shopify connection successful:', {
+      shop,
+      shopName: shopData.shop?.name,
+      scope,
+      access_token: access_token.substring(0, 10) + '...' // Only log partial token for security
+    })
+
+    // Redirect back to connections page with success
     return NextResponse.redirect(
-      new URL('/dashboard?error=callback_failed', req.url)
+      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/connections?success=shopify_connected&shop=${encodeURIComponent(shop)}`
+    )
+
+  } catch (error) {
+    console.error('Shopify OAuth callback error:', error)
+    return NextResponse.redirect(
+      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/connections?error=callback_error`
     )
   }
 }

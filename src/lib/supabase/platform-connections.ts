@@ -15,25 +15,31 @@ import type {
  * Get all platform connections for the authenticated user
  */
 export async function getUserPlatformConnections(): Promise<PlatformConnection[]> {
-  const clerkUserId = getClerkUserId()
-  
-  if (!clerkUserId) {
-    throw new Error('User not authenticated')
-  }
-
-  const supabase = createClient()
-  
-  const { data, error } = await supabase
-    .from('platform_connections')
-    .select('*')
-    .eq('clerk_user_id', clerkUserId)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    throw new Error(`Failed to fetch platform connections: ${error.message}`)
-  }
-
-  return data || []
+  // For MVP demo - return mock data instead of database
+  return [
+    {
+      id: 'demo-connection-1',
+      user_id: 'demo-user-id',
+      clerk_user_id: 'demo-user-id',
+      platform: 'shopify' as Platform,
+      connection_name: 'Demo Shopify Store',
+      credentials: {
+        shop_domain: 'demo-store.myshopify.com',
+        access_token: 'demo-token',
+        scope: 'read_products,write_products'
+      },
+      configuration: {
+        auto_sync: true,
+        sync_inventory: true,
+        sync_prices: true,
+        sync_images: true
+      },
+      is_active: true,
+      last_connected: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+  ]
 }
 
 /**

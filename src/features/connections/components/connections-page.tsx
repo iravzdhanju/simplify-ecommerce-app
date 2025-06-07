@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import ShopifyConnectionCard from './shopify-connection-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { apiRequest } from '@/lib/api-url'
 import { 
   Activity, 
   CheckCircle2, 
@@ -47,7 +48,7 @@ export default function ConnectionsPage() {
 
   const fetchConnections = async () => {
     try {
-      const response = await fetch('/api/platform-connections')
+      const response = await apiRequest('/api/platform-connections')
       if (response.ok) {
         const data = await response.json()
         if (data.success) {

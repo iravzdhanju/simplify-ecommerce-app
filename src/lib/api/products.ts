@@ -4,6 +4,7 @@
  */
 
 import { Product as SupabaseProduct } from '@/types/database'
+import { apiRequest } from '@/lib/api-url'
 
 // Transform Supabase product to match existing UI expectations
 export type Product = {
@@ -90,7 +91,7 @@ export const productsApi = {
     search?: string
   }): Promise<Product[]> {
     try {
-      const response = await fetch('/api/products')
+      const response = await apiRequest('/api/products')
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -183,7 +184,7 @@ export const productsApi = {
    */
   async getProductById(id: string): Promise<ProductResponse> {
     try {
-      const response = await fetch(`/api/products/${id}`)
+      const response = await apiRequest(`/api/products/${id}`)
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -239,7 +240,7 @@ export const productsApi = {
         status: productData.status || 'draft',
       }
       
-      const response = await fetch('/api/products', {
+      const response = await apiRequest('/api/products', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -288,7 +289,7 @@ export const productsApi = {
         status: productData.status,
       }
       
-      const response = await fetch(`/api/products/${id}`, {
+      const response = await apiRequest(`/api/products/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -323,7 +324,7 @@ export const productsApi = {
    */
   async deleteProduct(id: string): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await fetch(`/api/products/${id}`, {
+      const response = await apiRequest(`/api/products/${id}`, {
         method: 'DELETE',
       })
       
@@ -356,7 +357,7 @@ export const productsApi = {
     data?: any
   }> {
     try {
-      const response = await fetch('/api/sync/shopify', {
+      const response = await apiRequest('/api/sync/shopify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

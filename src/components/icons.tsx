@@ -2,6 +2,7 @@ import {
   IconAlertTriangle,
   IconArrowRight,
   IconArrowsRightLeft,
+  IconBuildingStore,
   IconCheck,
   IconChevronLeft,
   IconChevronRight,
@@ -24,7 +25,6 @@ import {
   IconPizza,
   IconPlus,
   IconSettings,
-  IconStorefront,
   IconSun,
   IconTrash,
   IconBrandTwitter,
@@ -74,7 +74,7 @@ export const Icons = {
   // Sync-related icons
   arrowRightLeft: IconArrowsRightLeft,
   link: IconLink,
-  store: IconStorefront,
+  store: IconBuildingStore,
   download: IconDownload,
   fileText: IconFileText
 };

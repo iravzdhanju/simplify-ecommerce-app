@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { apiRequest } from '@/lib/api-url'
 
 interface DashboardMetrics {
   products: {
@@ -40,7 +41,7 @@ export function useDashboardMetrics() {
       setLoading(true)
       setError(null)
       
-      const response = await fetch('/api/dashboard/metrics')
+      const response = await apiRequest('/api/dashboard/metrics')
       const data = await response.json()
       
       if (data.success) {

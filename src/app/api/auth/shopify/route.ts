@@ -19,17 +19,22 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { shop, connectionName } = initiateOAuthSchema.parse(body)
     
-    const shopifyOAuth = createShopifyOAuth()
-    const { url, state } = shopifyOAuth.generateAuthUrl(shop, clerkUserId)
+    // Generate real Shopify OAuth URL
+    const clientId = process.env.SHOPIFY_CLIENT_ID || 'demo-client-id'
+    const redirectUri = process.env.SHOPIFY_REDIRECT_URI || 'http://localhost:3000/api/auth/shopify/callback'
+    const scopes = 'read_products,write_products,read_orders,write_orders'
+    const state = `${clerkUserId}-${Date.now()}`
     
-    // Store state in session or database for validation
-    // For now, we'll return it to be stored client-side
-    // In production, consider storing in Redis or database
+    const authUrl = `https://${shop}/admin/oauth/authorize?` + 
+      `client_id=${clientId}&` +
+      `scope=${scopes}&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+      `state=${state}`
     
     return NextResponse.json({
       success: true,
       data: {
-        authUrl: url,
+        authUrl,
         state,
         shop,
         connectionName,
