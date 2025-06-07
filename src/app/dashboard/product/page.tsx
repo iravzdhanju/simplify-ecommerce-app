@@ -2,8 +2,14 @@ import PageContainer from '@/components/layout/page-container';
 import { buttonVariants } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { Separator } from '@/components/ui/separator';
-import { DataTableSkeleton } from '@/components/ui/table/data-table-skeleton';
-import ProductListingPage from '@/features/products/components/product-listing';
+import {
+  DataTableToolbarSkeleton,
+  DataTableContentSkeleton,
+  DataTablePaginationSkeleton
+} from '@/components/ui/table/data-table-skeleton';
+import ProductListingPage, {
+  ProductListingToolbar
+} from '@/features/products/components/product-listing';
 import { searchParamsCache, serialize } from '@/lib/searchparams';
 import { cn } from '@/lib/utils';
 import { IconPlus } from '@tabler/icons-react';
@@ -43,14 +49,33 @@ export default async function Page(props: pageProps) {
           </Link>
         </div>
         <Separator />
-        <Suspense
-          key={key}
-          fallback={
-            <DataTableSkeleton columnCount={7} rowCount={8} filterCount={3} />
-          }
-        >
-          <ProductListingPage />
-        </Suspense>
+
+        <div className='flex flex-1 flex-col space-y-4'>
+          {/* Real Toolbar - Never refreshes */}
+          <Suspense
+            fallback={
+              <DataTableToolbarSkeleton
+                filterCount={3}
+                withViewOptions={true}
+              />
+            }
+          >
+            <ProductListingToolbar />
+          </Suspense>
+
+          {/* Dynamic Table Content - Refreshes on filter changes */}
+          <Suspense
+            key={key}
+            fallback={
+              <div className='flex flex-1 flex-col space-y-4'>
+                <DataTableContentSkeleton columnCount={7} rowCount={8} />
+                <DataTablePaginationSkeleton />
+              </div>
+            }
+          >
+            <ProductListingPage />
+          </Suspense>
+        </div>
       </div>
     </PageContainer>
   );

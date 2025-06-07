@@ -1,7 +1,6 @@
 'use client';
 
 import { DataTable } from '@/components/ui/table/data-table';
-import { DataTableToolbar } from '@/components/ui/table/data-table-toolbar';
 
 import { useDataTable } from '@/hooks/use-data-table';
 
@@ -32,8 +31,9 @@ export function ProductTable<TData, TValue>({
   });
 
   return (
-    <DataTable table={table}>
-      <DataTableToolbar table={table} />
-    </DataTable>
+    <div className='flex flex-1 flex-col space-y-4'>
+      {/* Table Content Only - Toolbar is handled separately */}
+      <DataTable table={table} />
+    </div>
   );
 }
