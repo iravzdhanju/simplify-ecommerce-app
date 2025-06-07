@@ -29,6 +29,7 @@ import {
   SidebarRail
 } from '@/components/ui/sidebar';
 import { UserAvatarProfile } from '@/components/user-avatar-profile';
+import { ThemeSelector } from '@/components/theme-selector';
 import { navItems } from '@/constants/data';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useUser } from '@clerk/nextjs';
@@ -167,6 +168,11 @@ export default function AppSidebar() {
                     )}
                   </div>
                 </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+
+                <div className='px-2 py-2'>
+                  <ThemeSelector />
+                </div>
                 <DropdownMenuSeparator />
 
                 <DropdownMenuGroup>
