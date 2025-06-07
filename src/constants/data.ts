@@ -1,7 +1,20 @@
 import { NavItem } from '@/types';
 
-// Import the real Product type from our API
+// Import the real Product type from our API - but fallback to mock type for development
 export type { Product } from '@/lib/api/products';
+
+// Legacy Product type for backward compatibility
+export type LegacyProduct = {
+  photo_url: string;
+  name: string;
+  description: string;
+  created_at: string;
+  price: number;
+  id: number;
+  category: string;
+  updated_at: string;
+  marketplace: ('Shopify' | 'Amazon')[];
+};
 
 //Info: The following data is used for the sidebar navigation and Cmd K bar.
 export const navItems: NavItem[] = [
@@ -56,35 +69,37 @@ export const navItems: NavItem[] = [
     isActive: false,
     items: [] // No child items
   },
-  {
+  // Only show Account in development mode
+  ...(process.env.NODE_ENV === 'development' ? [{
     title: 'Account',
     url: '#', // Placeholder as there is no direct link for the parent
-    icon: 'billing',
+    icon: 'billing' as const,
     isActive: true,
 
     items: [
       {
         title: 'Profile',
         url: '/dashboard/profile',
-        icon: 'userPen',
-        shortcut: ['m', 'm']
+        icon: 'userPen' as const,
+        shortcut: ['m', 'm'] as [string, string]
       },
       {
         title: 'Login',
-        shortcut: ['l', 'l'],
+        shortcut: ['l', 'l'] as [string, string],
         url: '/',
-        icon: 'login'
+        icon: 'login' as const
       }
     ]
-  },
-  {
+  }] : []),
+  // Only show Kanban in development mode
+  ...(process.env.NODE_ENV === 'development' ? [{
     title: 'Kanban',
     url: '/dashboard/kanban',
-    icon: 'kanban',
-    shortcut: ['k', 'k'],
+    icon: 'kanban' as const,
+    shortcut: ['k', 'k'] as [string, string],
     isActive: false,
     items: [] // No child items
-  }
+  }] : [])
 ];
 
 export interface SaleUser {

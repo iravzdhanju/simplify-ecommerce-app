@@ -29,6 +29,7 @@ import {
   SidebarRail
 } from '@/components/ui/sidebar';
 import { UserAvatarProfile } from '@/components/user-avatar-profile';
+import { ThemeSelector } from '@/components/theme-selector';
 import { navItems } from '@/constants/data';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useUser } from '@clerk/nextjs';
@@ -46,29 +47,21 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 import { Icons } from '../icons';
-import { OrgSwitcher } from '../org-switcher';
+import { OrgHeader } from '../org-header';
+
 export const company = {
   name: 'Acme Inc',
   logo: IconPhotoUp,
   plan: 'Enterprise'
 };
 
-const tenants = [
-  { id: '1', name: 'Acme Inc' },
-  { id: '2', name: 'Beta Corp' },
-  { id: '3', name: 'Gamma Ltd' }
-];
+const organization = { id: '1', name: 'Acme Inc' };
 
 export default function AppSidebar() {
   const pathname = usePathname();
   const { isOpen } = useMediaQuery();
   const { user } = useUser();
   const router = useRouter();
-  const handleSwitchTenant = (_tenantId: string) => {
-    // Tenant switching functionality would be implemented here
-  };
-
-  const activeTenant = tenants[0];
 
   React.useEffect(() => {
     // Side effects based on sidebar state changes
@@ -77,11 +70,7 @@ export default function AppSidebar() {
   return (
     <Sidebar collapsible='icon'>
       <SidebarHeader>
-        <OrgSwitcher
-          tenants={tenants}
-          defaultTenant={activeTenant}
-          onTenantSwitch={handleSwitchTenant}
-        />
+        <OrgHeader />
       </SidebarHeader>
       <SidebarContent className='overflow-x-hidden'>
         <SidebarGroup>
@@ -181,6 +170,11 @@ export default function AppSidebar() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
+                <div className='px-2 py-2'>
+                  <ThemeSelector />
+                </div>
+                <DropdownMenuSeparator />
+
                 <DropdownMenuGroup>
                   <DropdownMenuItem
                     onClick={() => router.push('/dashboard/profile')}
@@ -198,10 +192,12 @@ export default function AppSidebar() {
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <IconLogout className='mr-2 h-4 w-4' />
-                  <SignOutButton redirectUrl='/auth/sign-in' />
-                </DropdownMenuItem>
+                <SignOutButton redirectUrl='/auth/sign-in'>
+                  <DropdownMenuItem>
+                    <IconLogout className='mr-2 h-4 w-4' />
+                    Log out
+                  </DropdownMenuItem>
+                </SignOutButton>
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>
