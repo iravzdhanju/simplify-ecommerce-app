@@ -1,14 +1,17 @@
 import {
   IconAlertTriangle,
   IconArrowRight,
+  IconArrowsRightLeft,
   IconCheck,
   IconChevronLeft,
   IconChevronRight,
   IconCommand,
   IconCreditCard,
+  IconDownload,
   IconFile,
   IconFileText,
   IconHelpCircle,
+  IconLink,
   IconPhoto,
   IconDeviceLaptop,
   IconLayoutDashboard,
@@ -21,6 +24,7 @@ import {
   IconPizza,
   IconPlus,
   IconSettings,
+  IconStorefront,
   IconSun,
   IconTrash,
   IconBrandTwitter,
@@ -66,5 +70,11 @@ export const Icons = {
   laptop: IconDeviceLaptop,
   github: IconBrandGithub,
   twitter: IconBrandTwitter,
-  check: IconCheck
+  check: IconCheck,
+  // Sync-related icons
+  arrowRightLeft: IconArrowsRightLeft,
+  link: IconLink,
+  store: IconStorefront,
+  download: IconDownload,
+  fileText: IconFileText
 };
