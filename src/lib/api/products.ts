@@ -16,6 +16,7 @@ export type Product = {
   id: string // UUID instead of number
   category: string
   updated_at: string
+  marketplace: ('Shopify' | 'Amazon')[] // Required for table columns
   // Enhanced fields from Shopify integration
   sku?: string
   brand?: string
@@ -61,6 +62,7 @@ function transformProduct(supabaseProduct: any): Product {
     photo_url: supabaseProduct.images?.[0] || '/placeholder-product.png',
     created_at: supabaseProduct.created_at,
     updated_at: supabaseProduct.updated_at,
+    marketplace: supabaseProduct.marketplace || ['Shopify'], // Default marketplace
     sku: supabaseProduct.sku,
     brand: supabaseProduct.brand,
     inventory: supabaseProduct.inventory,

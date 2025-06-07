@@ -6,8 +6,8 @@ import type { Product, InsertProduct, UpdateProduct } from '@/types/database'
  * Get all products for the authenticated user
  */
 export async function getUserProducts(): Promise<Product[]> {
-  // For MVP demo - return mock data instead of database
-  return [
+  // For MVP demo - return mock data matching the expected Product type structure
+  const mockSupabaseProducts: Product[] = [
     {
       id: 'demo-product-1',
       user_id: 'demo-user-id',
@@ -19,6 +19,7 @@ export async function getUserProducts(): Promise<Product[]> {
       sku: 'DEMO-001',
       inventory: 100,
       images: ['https://via.placeholder.com/300x300?text=Demo+Product+1'],
+      marketplace: ['Shopify'],
       brand: 'Demo Brand',
       weight: 1.0,
       dimensions: null,
@@ -38,6 +39,7 @@ export async function getUserProducts(): Promise<Product[]> {
       sku: 'DEMO-002',
       inventory: 50,
       images: ['https://via.placeholder.com/300x300?text=Demo+Product+2'],
+      marketplace: ['Shopify', 'Amazon'],
       brand: 'Demo Brand',
       weight: 0.5,
       dimensions: null,
@@ -47,6 +49,8 @@ export async function getUserProducts(): Promise<Product[]> {
       updated_at: new Date().toISOString()
     }
   ]
+
+  return mockSupabaseProducts
 }
 
 /**
