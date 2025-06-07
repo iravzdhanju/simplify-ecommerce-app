@@ -1,6 +1,10 @@
 import { NavItem } from '@/types';
 
-export type Product = {
+// Import the real Product type from our API - but fallback to mock type for development
+export type { Product } from '@/lib/api/products';
+
+// Legacy Product type for backward compatibility
+export type LegacyProduct = {
   photo_url: string;
   name: string;
   description: string;
@@ -27,6 +31,41 @@ export const navItems: NavItem[] = [
     url: '/dashboard/product',
     icon: 'product',
     shortcut: ['p', 'p'],
+    isActive: false,
+    items: [] // No child items
+  },
+  {
+    title: 'Sync',
+    url: '#',
+    icon: 'arrowRightLeft',
+    shortcut: ['s', 's'],
+    isActive: false,
+    items: [
+      {
+        title: 'Shopify Sync',
+        url: '/dashboard/sync/shopify',
+        icon: 'store',
+        shortcut: ['s', 'h']
+      },
+      {
+        title: 'Bulk Import',
+        url: '/dashboard/sync/bulk',
+        icon: 'download',
+        shortcut: ['b', 'i']
+      },
+      {
+        title: 'Sync Logs',
+        url: '/dashboard/sync/logs',
+        icon: 'fileText',
+        shortcut: ['s', 'l']
+      }
+    ]
+  },
+  {
+    title: 'Connections',
+    url: '/dashboard/connections',
+    icon: 'link',
+    shortcut: ['c', 'c'],
     isActive: false,
     items: [] // No child items
   },
