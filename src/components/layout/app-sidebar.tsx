@@ -69,7 +69,7 @@ export default function AppSidebar() {
   return (
     <Sidebar collapsible='icon'>
       <SidebarHeader>
-        <OrgHeader organization={organization} />
+        <OrgHeader />
       </SidebarHeader>
       <SidebarContent className='overflow-x-hidden'>
         <SidebarGroup>
@@ -186,10 +186,12 @@ export default function AppSidebar() {
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <IconLogout className='mr-2 h-4 w-4' />
-                  <SignOutButton redirectUrl='/auth/sign-in' />
-                </DropdownMenuItem>
+                <SignOutButton redirectUrl='/auth/sign-in'>
+                  <DropdownMenuItem>
+                    <IconLogout className='mr-2 h-4 w-4' />
+                    Log out
+                  </DropdownMenuItem>
+                </SignOutButton>
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>

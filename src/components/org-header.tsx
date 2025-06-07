@@ -8,26 +8,42 @@ import {
   SidebarMenuButton,
   SidebarMenuItem
 } from '@/components/ui/sidebar';
+import { useOrganizationStore } from '@/stores/organization-store';
 
-interface Organization {
-  id: string;
-  name: string;
-}
+export function OrgHeader() {
+  const { organization } = useOrganizationStore();
 
-export function OrgHeader({ organization }: { organization: Organization }) {
+  // Default fallback organization
+  const displayOrg = organization || {
+    id: 'default',
+    name: 'My Organization',
+    logo: undefined,
+    isSetup: false
+  };
+
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton size='lg'>
-          <div className='bg-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg'>
-            <Building2 className='size-4' />
+          <div className='bg-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg'>
+            {displayOrg.logo ? (
+              <img
+                src={displayOrg.logo}
+                alt={`${displayOrg.name} logo`}
+                className='h-full w-full object-cover'
+              />
+            ) : (
+              <Building2 className='size-4' />
+            )}
           </div>
           <div className='flex flex-col gap-0.5 leading-none'>
             <div className='flex items-center gap-2'>
               <GalleryVerticalEnd className='size-4' />
-              <span className='text-sm font-semibold'>Logo</span>
+              <span className='text-sm font-semibold'>
+                {displayOrg.logo ? 'Logo' : 'Default'}
+              </span>
             </div>
-            <span className=''>{organization.name}</span>
+            <span className=''>{displayOrg.name}</span>
           </div>
         </SidebarMenuButton>
       </SidebarMenuItem>
