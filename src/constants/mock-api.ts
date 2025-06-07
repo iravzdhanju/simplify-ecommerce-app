@@ -18,6 +18,7 @@ export type Product = {
   id: number;
   category: string;
   updated_at: string;
+  marketplace: ('Shopify' | 'Amazon')[];
 };
 
 // Mock product data store
@@ -39,6 +40,16 @@ export const fakeProducts = {
         'Beauty Products'
       ];
 
+      // Generate random marketplace combinations
+      const getRandomMarketplaces = (): ('Shopify' | 'Amazon')[] => {
+        const combinations: ('Shopify' | 'Amazon')[][] = [
+          ['Shopify'],
+          ['Amazon'],
+          ['Shopify', 'Amazon']
+        ];
+        return faker.helpers.arrayElement(combinations);
+      };
+
       return {
         id,
         name: faker.commerce.productName(),
@@ -49,6 +60,7 @@ export const fakeProducts = {
         price: parseFloat(faker.commerce.price({ min: 5, max: 500, dec: 2 })),
         photo_url: `https://api.slingacademy.com/public/sample-products/${id}.png`,
         category: faker.helpers.arrayElement(categories),
+        marketplace: getRandomMarketplaces(),
         updated_at: faker.date.recent().toISOString()
       };
     }
@@ -61,12 +73,14 @@ export const fakeProducts = {
     this.records = sampleProducts;
   },
 
-  // Get all products with optional category filtering and search
+  // Get all products with optional category and marketplace filtering and search
   async getAll({
     categories = [],
+    marketplaces = [],
     search
   }: {
     categories?: string[];
+    marketplaces?: string[];
     search?: string;
   }) {
     let products = [...this.records];
@@ -78,32 +92,43 @@ export const fakeProducts = {
       );
     }
 
+    // Filter products based on selected marketplaces
+    if (marketplaces.length > 0) {
+      products = products.filter((product) =>
+        product.marketplace.some(marketplace => marketplaces.includes(marketplace))
+      );
+    }
+
     // Search functionality across multiple fields
     if (search) {
       products = matchSorter(products, search, {
-        keys: ['name', 'description', 'category']
+        keys: ['name', 'description', 'category', 'marketplace']
       });
     }
 
     return products;
   },
 
-  // Get paginated results with optional category filtering and search
+  // Get paginated results with optional category and marketplace filtering and search
   async getProducts({
     page = 1,
     limit = 10,
     categories,
+    marketplaces,
     search
   }: {
     page?: number;
     limit?: number;
     categories?: string;
+    marketplaces?: string;
     search?: string;
   }) {
-    await delay(1000);
+    await delay(200);
     const categoriesArray = categories ? categories.split('.') : [];
+    const marketplacesArray = marketplaces ? marketplaces.split('.') : [];
     const allProducts = await this.getAll({
       categories: categoriesArray,
+      marketplaces: marketplacesArray,
       search
     });
     const totalProducts = allProducts.length;
@@ -129,7 +154,7 @@ export const fakeProducts = {
 
   // Get a specific product by its ID
   async getProductById(id: number) {
-    await delay(1000); // Simulate a delay
+    await delay(200); // Simulate a delay
 
     // Find the product by its ID
     const product = this.records.find((product) => product.id === id);

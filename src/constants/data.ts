@@ -9,6 +9,7 @@ export type Product = {
   id: number;
   category: string;
   updated_at: string;
+  marketplace: ('Shopify' | 'Amazon')[];
 };
 
 //Info: The following data is used for the sidebar navigation and Cmd K bar.
@@ -22,7 +23,7 @@ export const navItems: NavItem[] = [
     items: [] // Empty array as there are no child items for Dashboard
   },
   {
-    title: 'Product',
+    title: 'Products',
     url: '/dashboard/product',
     icon: 'product',
     shortcut: ['p', 'p'],

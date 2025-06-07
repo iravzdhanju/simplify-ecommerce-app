@@ -3,6 +3,7 @@
 import { FileUploader } from '@/components/file-uploader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Form,
   FormControl,
@@ -49,6 +50,9 @@ const formSchema = z.object({
     message: 'Product name must be at least 2 characters.'
   }),
   category: z.string(),
+  marketplace: z.array(z.enum(['Shopify', 'Amazon'])).min(1, {
+    message: 'Please select at least one marketplace.'
+  }),
   price: z.number(),
   description: z.string().min(10, {
     message: 'Description must be at least 10 characters.'
@@ -65,6 +69,8 @@ export default function ProductForm({
   const defaultValues = {
     name: initialData?.name || '',
     category: initialData?.category || '',
+    marketplace:
+      initialData?.marketplace || (['Shopify'] as ('Shopify' | 'Amazon')[]),
     price: initialData?.price || 0,
     description: initialData?.description || ''
   };
@@ -153,6 +159,56 @@ export default function ProductForm({
                         </SelectItem>
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='marketplace'
+                render={() => (
+                  <FormItem>
+                    <div className='mb-4'>
+                      <FormLabel className='text-base'>Marketplaces</FormLabel>
+                    </div>
+                    {['Shopify', 'Amazon'].map((marketplace) => (
+                      <FormField
+                        key={marketplace}
+                        control={form.control}
+                        name='marketplace'
+                        render={({ field }) => {
+                          return (
+                            <FormItem
+                              key={marketplace}
+                              className='flex flex-row items-start space-y-0 space-x-3'
+                            >
+                              <FormControl>
+                                <Checkbox
+                                  checked={field.value?.includes(
+                                    marketplace as 'Shopify' | 'Amazon'
+                                  )}
+                                  onCheckedChange={(checked) => {
+                                    return checked
+                                      ? field.onChange([
+                                          ...field.value,
+                                          marketplace
+                                        ])
+                                      : field.onChange(
+                                          field.value?.filter(
+                                            (value) => value !== marketplace
+                                          )
+                                        );
+                                  }}
+                                />
+                              </FormControl>
+                              <FormLabel className='font-normal'>
+                                {marketplace}
+                              </FormLabel>
+                            </FormItem>
+                          );
+                        }}
+                      />
+                    ))}
                     <FormMessage />
                   </FormItem>
                 )}

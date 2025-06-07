@@ -7,11 +7,13 @@ import { useDataTable } from '@/hooks/use-data-table';
 
 import { ColumnDef } from '@tanstack/react-table';
 import { parseAsInteger, useQueryState } from 'nuqs';
+
 interface ProductTableParams<TData, TValue> {
   data: TData[];
   totalItems: number;
   columns: ColumnDef<TData, TValue>[];
 }
+
 export function ProductTable<TData, TValue>({
   data,
   totalItems,

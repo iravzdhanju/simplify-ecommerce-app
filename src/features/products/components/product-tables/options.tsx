@@ -8,3 +8,8 @@ export const CATEGORY_OPTIONS = [
   { value: 'Jewelry', label: 'Jewelry' },
   { value: 'Beauty Products', label: 'Beauty Products' }
 ];
+
+export const MARKETPLACE_OPTIONS = [
+  { value: 'Shopify', label: 'Shopify' },
+  { value: 'Amazon', label: 'Amazon' }
+];
