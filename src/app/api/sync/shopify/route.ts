@@ -201,33 +201,37 @@ function transformProductForShopify(product: any) {
 }
 
 /**
- * Sync product to Shopify (placeholder for Agent A to implement)
+ * Sync product to Shopify using the new GraphQL client
  */
 async function syncProductToShopify(
   productData: any,
   credentials: any,
   operation: SyncOperation
 ): Promise<{ externalId: string; responseData: any }> {
-  // TODO: Agent A will implement the actual Shopify API integration here
-  // This is a placeholder that simulates the sync operation
+  const { ShopifyProductSync } = await import('@/lib/shopify/product-sync')
   
-  console.log('Syncing to Shopify:', {
-    operation,
-    productData,
-    shopDomain: credentials.shop_domain,
+  // Create Shopify sync client
+  const shopifySync = new ShopifyProductSync({
+    shop_domain: credentials.shop_domain,
+    access_token: credentials.access_token,
+    scope: credentials.scope || 'write_products,read_products',
   })
   
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  // Extract product ID from the sync request
+  const productId = productData.productId || productData.product?.id
+  if (!productId) {
+    throw new Error('Product ID is required for sync operation')
+  }
   
-  // Simulate successful response
+  // Perform the sync operation
+  const result = await shopifySync.syncProductToShopify(productId, operation)
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Sync operation failed')
+  }
+  
   return {
-    externalId: `shopify_${Date.now()}`, // Placeholder external ID
-    responseData: {
-      id: Date.now(),
-      title: productData.product.title,
-      status: 'success',
-      variants: [{ id: Date.now() + 1 }],
-    },
+    externalId: result.externalId!,
+    responseData: result.data,
   }
 }
