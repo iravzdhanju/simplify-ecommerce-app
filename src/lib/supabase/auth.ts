@@ -6,14 +6,15 @@ import type { User } from '@/types/database'
  * Get the authenticated user from Clerk and their corresponding Supabase user
  */
 export async function getAuthenticatedUser(): Promise<User | null> {
-  const { userId } = auth()
-  
+
+  const { userId } = await auth()
+
   if (!userId) {
     return null
   }
 
-  const supabase = createClient()
-  
+  const supabase = await createClient()
+
   const { data: user, error } = await supabase
     .from('users')
     .select('*')

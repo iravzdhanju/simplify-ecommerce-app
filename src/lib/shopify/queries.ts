@@ -354,7 +354,7 @@ export const BULK_UPDATE_VARIANTS_MUTATION = `
 // Inventory Queries and Mutations
 export const GET_INVENTORY_LEVELS_QUERY = `
   query GetInventoryLevels($productVariantIds: [ID!]!) {
-    productVariants(first: 250, query: "id:${productVariantIds.join(' OR id:')}") {
+    productVariants(first: 250) {
       edges {
         node {
           id
@@ -512,8 +512,6 @@ export const BULK_PRODUCTS_QUERY = `
                 inventoryQuantity
                 sku
                 barcode
-                weight
-                weightUnit
                 selectedOptions {
                   name
                   value
@@ -528,6 +526,7 @@ export const BULK_PRODUCTS_QUERY = `
           images {
             edges {
               node {
+                id
                 url
                 altText
                 width

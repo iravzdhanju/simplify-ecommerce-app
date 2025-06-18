@@ -25,34 +25,34 @@ const updateProductSchema = z.object({
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     requireAuth()
-    
-    const product = await getUserProduct(params.id)
-    
+
+    const product = await getUserProduct((await params).id)
+
     if (!product) {
       return NextResponse.json(
         { success: false, error: 'Product not found' },
         { status: 404 }
       )
     }
-    
+
     return NextResponse.json({
       success: true,
       data: product,
     })
   } catch (error) {
-    console.error(`GET /api/products/${params.id} error:`, error)
-    
+    console.error(`GET /api/products/${(await params).id} error:`, error)
+
     if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Failed to fetch product' },
       { status: 500 }
@@ -62,41 +62,41 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     requireAuth()
-    
+
     const body = await req.json()
     const validatedData = updateProductSchema.parse(body)
-    
-    const product = await updateProduct(params.id, validatedData)
-    
+
+    const product = await updateProduct((await params).id, validatedData)
+
     return NextResponse.json({
       success: true,
       data: product,
     })
   } catch (error) {
-    console.error(`PUT /api/products/${params.id} error:`, error)
-    
+    console.error(`PUT /api/products/${(await params).id} error:`, error)
+
     if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Validation error',
-          details: error.errors 
+          details: error.errors
         },
         { status: 400 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Failed to update product' },
       { status: 500 }
@@ -106,27 +106,27 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     requireAuth()
-    
-    await deleteProduct(params.id)
-    
+
+    await deleteProduct((await params).id)
+
     return NextResponse.json({
       success: true,
       message: 'Product deleted successfully',
     })
   } catch (error) {
-    console.error(`DELETE /api/products/${params.id} error:`, error)
-    
+    console.error(`DELETE /api/products/${(await params).id} error:`, error)
+
     if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Failed to delete product' },
       { status: 500 }

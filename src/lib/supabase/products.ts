@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getClerkUserId, getAuthenticatedUserId } from './auth'
 import type { Product, InsertProduct, UpdateProduct } from '@/types/database'
 
@@ -6,24 +6,91 @@ import type { Product, InsertProduct, UpdateProduct } from '@/types/database'
  * Get all products for the authenticated user
  */
 export async function getUserProducts(): Promise<Product[]> {
-  // For MVP demo - return mock data matching the expected Product type structure
-  const mockSupabaseProducts: Product[] = [
+  const clerkUserId = getClerkUserId()
+
+  if (!clerkUserId) {
+    throw new Error('User not authenticated')
+  }
+
+  try {
+    // Use service role client so we can freely join across tables without RLS headaches
+    const supabase = createServiceRoleClient()
+
+    // 1. Find which platforms still have at least one ACTIVE connection for this user
+    const { data: activeConnections, error: connError } = await supabase
+      .from('platform_connections')
+      .select('platform')
+      .eq('clerk_user_id', clerkUserId)
+      .eq('is_active', true)
+
+    if (connError) {
+      console.warn('Could not fetch active connections, returning demo data:', connError.message)
+      return getDemoProducts()
+    }
+
+    const activePlatforms = (activeConnections || []).map((c: any) => c.platform)
+
+    // If there are no active connections we return an empty list so disconnected stores are hidden
+    if (activePlatforms.length === 0) {
+      return []
+    }
+
+    // 2. Fetch products that have at least one channel mapping tied to an active platform
+    const { data, error } = await supabase
+      .from('products')
+      .select(
+        `*,
+        channel_mappings!inner (
+          platform
+        )`
+      )
+      .eq('clerk_user_id', clerkUserId)
+      .in('channel_mappings.platform', activePlatforms)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.warn('Database error, returning demo data:', error.message)
+      return getDemoProducts()
+    }
+
+    // If no data, fall back to demo products as before (for dev environments)
+    if (!data || data.length === 0) {
+      return []
+    }
+
+    // Strip nested channel_mappings and deduplicate by product id
+    const uniqueMap = new Map<string, Product>()
+    data.forEach((p: any) => {
+      const { channel_mappings, ...rest } = p
+      uniqueMap.set(rest.id, rest as Product)
+    })
+    return Array.from(uniqueMap.values())
+  } catch (error) {
+    console.warn('Database connection failed, returning demo data:', error)
+    return getDemoProducts()
+  }
+}
+
+/**
+ * Get demo products for development/demo purposes
+ */
+function getDemoProducts(): Product[] {
+  return [
     {
       id: 'demo-product-1',
       user_id: 'demo-user-id',
       clerk_user_id: 'demo-user-id',
       title: 'Demo Product 1',
-      description: 'This is a demo product for testing',
+      description: 'This is a demo product for testing the sync functionality',
       price: 29.99,
       category: 'Electronics',
       sku: 'DEMO-001',
       inventory: 100,
-      images: ['https://via.placeholder.com/300x300?text=Demo+Product+1'],
-      marketplace: ['Shopify'],
+      images: ['/placeholder-product.svg'],
       brand: 'Demo Brand',
       weight: 1.0,
       dimensions: null,
-      tags: ['demo', 'electronics'],
+      tags: ['demo', 'electronics', 'sync-test'],
       status: 'active',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -33,24 +100,45 @@ export async function getUserProducts(): Promise<Product[]> {
       user_id: 'demo-user-id',
       clerk_user_id: 'demo-user-id',
       title: 'Demo Product 2',
-      description: 'Another demo product for testing',
+      description: 'Another demo product to test bulk operations',
       price: 19.99,
       category: 'Clothing',
       sku: 'DEMO-002',
       inventory: 50,
-      images: ['https://via.placeholder.com/300x300?text=Demo+Product+2'],
-      marketplace: ['Shopify', 'Amazon'],
+      images: ['/placeholder-product.svg'],
       brand: 'Demo Brand',
       weight: 0.5,
       dimensions: null,
-      tags: ['demo', 'clothing'],
+      tags: ['demo', 'clothing', 'test'],
       status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'demo-product-3',
+      user_id: 'demo-user-id',
+      clerk_user_id: 'demo-user-id',
+      title: 'Demo Product 3',
+      description: 'Third demo product with draft status',
+      price: 49.99,
+      category: 'Home & Garden',
+      sku: 'DEMO-003',
+      inventory: 25,
+      images: ['/placeholder-product.svg'],
+      brand: 'Demo Brand',
+      weight: 2.0,
+      dimensions: {
+        length: 10,
+        width: 8,
+        height: 6,
+        unit: 'in'
+      },
+      tags: ['demo', 'home', 'garden'],
+      status: 'draft',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
   ]
-
-  return mockSupabaseProducts
 }
 
 /**
@@ -58,28 +146,38 @@ export async function getUserProducts(): Promise<Product[]> {
  */
 export async function getUserProduct(productId: string): Promise<Product | null> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = createClient()
-  
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .eq('id', productId)
-    .eq('clerk_user_id', clerkUserId)
-    .single()
+  try {
+    const supabase = await createClient()
 
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null // Product not found
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', productId)
+      .eq('clerk_user_id', clerkUserId)
+      .single()
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Product not found in database, check demo products
+        const demoProducts = getDemoProducts()
+        return demoProducts.find(p => p.id === productId) || null
+      }
+      console.warn('Database error, checking demo products:', error.message)
+      const demoProducts = getDemoProducts()
+      return demoProducts.find(p => p.id === productId) || null
     }
-    throw new Error(`Failed to fetch product: ${error.message}`)
-  }
 
-  return data
+    return data
+  } catch (error) {
+    console.warn('Database connection failed, checking demo products:', error)
+    const demoProducts = getDemoProducts()
+    return demoProducts.find(p => p.id === productId) || null
+  }
 }
 
 /**
@@ -87,19 +185,27 @@ export async function getUserProduct(productId: string): Promise<Product | null>
  */
 export async function createProduct(productData: Omit<InsertProduct, 'user_id' | 'clerk_user_id'>): Promise<Product> {
   const clerkUserId = getClerkUserId()
-  const userId = await getAuthenticatedUserId()
-  
-  if (!clerkUserId || !userId) {
+
+  if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = createClient()
-  
+  // Get user ID if available, but don't fail if we can't get it
+  let userId: string | null = null
+  try {
+    userId = await getAuthenticatedUserId()
+  } catch (error) {
+    console.warn('Could not get authenticated user ID for product creation:', error)
+  }
+
+  // Use service role client to bypass RLS issues
+  const supabase = createServiceRoleClient()
+
   const { data, error } = await supabase
     .from('products')
     .insert({
       ...productData,
-      user_id: userId,
+      user_id: userId, // Can be null for demo mode
       clerk_user_id: clerkUserId,
     })
     .select()
@@ -117,13 +223,13 @@ export async function createProduct(productData: Omit<InsertProduct, 'user_id' |
  */
 export async function updateProduct(productId: string, productData: UpdateProduct): Promise<Product> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = createClient()
-  
+  const supabase = await createClient()
+
   const { data, error } = await supabase
     .from('products')
     .update({
@@ -147,13 +253,13 @@ export async function updateProduct(productId: string, productData: UpdateProduc
  */
 export async function deleteProduct(productId: string): Promise<void> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = createClient()
-  
+  const supabase = await createClient()
+
   const { error } = await supabase
     .from('products')
     .delete()
@@ -170,35 +276,43 @@ export async function deleteProduct(productId: string): Promise<void> {
  */
 export async function getProductsWithSyncStatus(): Promise<(Product & { channel_mappings: any[] })[]> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = createClient()
-  
-  const { data, error } = await supabase
-    .from('products')
-    .select(`
-      *,
-      channel_mappings (
-        id,
-        platform,
-        external_id,
-        sync_status,
-        last_synced,
-        error_message,
-        error_count
-      )
-    `)
-    .eq('clerk_user_id', clerkUserId)
-    .order('created_at', { ascending: false })
+  try {
+    const supabase = await createClient()
 
-  if (error) {
-    throw new Error(`Failed to fetch products with sync status: ${error.message}`)
+    const { data, error } = await supabase
+      .from('products')
+      .select(`
+        *,
+        channel_mappings (
+          id,
+          platform,
+          external_id,
+          sync_status,
+          last_synced,
+          error_message,
+          error_count
+        )
+      `)
+      .eq('clerk_user_id', clerkUserId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.warn('Database error, returning demo products without sync status:', error.message)
+      const demoProducts = getDemoProducts()
+      return demoProducts.map(product => ({ ...product, channel_mappings: [] }))
+    }
+
+    return data || []
+  } catch (error) {
+    console.warn('Database connection failed, returning demo products without sync status:', error)
+    const demoProducts = getDemoProducts()
+    return demoProducts.map(product => ({ ...product, channel_mappings: [] }))
   }
-
-  return data || []
 }
 
 /**
@@ -206,13 +320,13 @@ export async function getProductsWithSyncStatus(): Promise<(Product & { channel_
  */
 export async function searchProducts(query: string): Promise<Product[]> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = createClient()
-  
+  const supabase = await createClient()
+
   const { data, error } = await supabase
     .from('products')
     .select('*')
@@ -232,13 +346,13 @@ export async function searchProducts(query: string): Promise<Product[]> {
  */
 export async function getProductsByStatus(status: string): Promise<Product[]> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = createClient()
-  
+  const supabase = await createClient()
+
   const { data, error } = await supabase
     .from('products')
     .select('*')

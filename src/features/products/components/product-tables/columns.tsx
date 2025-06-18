@@ -17,7 +17,7 @@ export const columns: ColumnDef<Product>[] = [
         <div className='relative aspect-square'>
           <Image
             src={row.getValue('photo_url')}
-            alt={row.getValue('name')}
+            alt='Product Image'
             fill
             className='rounded-lg'
           />

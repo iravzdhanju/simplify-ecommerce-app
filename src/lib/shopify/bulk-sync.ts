@@ -3,7 +3,7 @@ import { BULK_PRODUCTS_QUERY } from './queries'
 import { createProduct } from '@/lib/supabase/products'
 import { upsertChannelMapping } from '@/lib/supabase/sync'
 import { getClerkUserId } from '@/lib/supabase/auth'
-import { Platform, SyncStatus, ShopifyCredentials } from '@/types/database'
+import { Platform, SyncStatus, ShopifyCredentials, Json } from '@/types/database'
 
 interface BulkSyncResult {
   totalProducts: number
@@ -95,40 +95,45 @@ export class ShopifyBulkSync {
 
     try {
       console.log('Starting bulk product import from Shopify...')
-      
+
+      // Check if we have valid credentials first
+      if (!this.credentials.access_token || !this.credentials.shop_domain) {
+        throw new Error('Invalid Shopify credentials: Missing access token or shop domain')
+      }
+
       // Start bulk operation
       const bulkOperation = await this.client.executeBulkOperation(BULK_PRODUCTS_QUERY)
-      
+
       console.log(`Bulk operation completed. Processing ${bulkOperation.objectCount} objects...`)
-      
+
       // Download and process results
       const products = await this.downloadBulkResults(bulkOperation.url)
       result.totalProducts = products.length
-      
+
       // Process products in batches
       const batchSize = 10
       for (let i = 0; i < products.length; i += batchSize) {
         const batch = products.slice(i, i + batchSize)
         const batchResults = await this.processBatch(batch)
-        
+
         result.successfulImports += batchResults.successful
         result.failedImports += batchResults.failed
         result.errors.push(...batchResults.errors)
-        
+
         // Log progress
         const processed = Math.min(i + batchSize, products.length)
         console.log(`Processed ${processed}/${products.length} products`)
       }
-      
+
       result.processingTime = Date.now() - startTime
-      
+
       console.log('Bulk import completed:', {
         total: result.totalProducts,
         successful: result.successfulImports,
         failed: result.failedImports,
         time: `${result.processingTime}ms`,
       })
-      
+
       return result
     } catch (error) {
       console.error('Bulk import failed:', error)
@@ -143,7 +148,7 @@ export class ShopifyBulkSync {
    */
   async performIncrementalSync(since?: Date): Promise<BulkSyncResult> {
     const sinceDate = since || new Date(Date.now() - 24 * 60 * 60 * 1000) // Default: last 24 hours
-    
+
     const incrementalQuery = `
       {
         products(query: "updated_at:>='${sinceDate.toISOString()}'") {
@@ -210,10 +215,10 @@ export class ShopifyBulkSync {
     `
 
     console.log(`Starting incremental sync since ${sinceDate.toISOString()}...`)
-    
+
     const bulkOperation = await this.client.executeBulkOperation(incrementalQuery)
     const products = await this.downloadBulkResults(bulkOperation.url)
-    
+
     // Process incrementally - update existing products or create new ones
     const result: BulkSyncResult = {
       totalProducts: products.length,
@@ -225,7 +230,7 @@ export class ShopifyBulkSync {
 
     const startTime = Date.now()
     const batchResults = await this.processBatch(products, true) // true = allow updates
-    
+
     result.successfulImports = batchResults.successful
     result.failedImports = batchResults.failed
     result.errors = batchResults.errors
@@ -245,7 +250,9 @@ export class ShopifyBulkSync {
 
     const jsonlData = await response.text()
     const lines = jsonlData.split('\n').filter(line => line.trim())
-    
+
+    console.log(`Downloaded JSONL with ${lines.length} lines`)
+
     // Parse JSONL format and reconstruct products
     const products = new Map<string, ShopifyBulkProduct>()
     const variants = new Map<string, ShopifyBulkVariant[]>()
@@ -253,83 +260,88 @@ export class ShopifyBulkSync {
     const metafields = new Map<string, ShopifyBulkMetafield[]>()
 
     // Parse all objects and group by type
-    lines.forEach(line => {
+    let productCount = 0
+    let variantCount = 0
+    let imageCount = 0
+
+    lines.forEach((line, index) => {
       try {
         const obj = JSON.parse(line)
-        
-        switch (obj.__typename) {
-          case 'Product':
-            products.set(obj.id, {
-              id: obj.id,
-              title: obj.title,
-              handle: obj.handle,
-              description: obj.description || '',
-              productType: obj.productType || '',
-              vendor: obj.vendor || '',
-              tags: obj.tags || [],
-              status: obj.status,
-              createdAt: obj.createdAt,
-              updatedAt: obj.updatedAt,
-              totalInventory: obj.totalInventory || 0,
-              variants: [],
-              images: [],
-              metafields: [],
-            })
-            break
 
-          case 'ProductVariant':
-            if (obj.__parentId) {
-              if (!variants.has(obj.__parentId)) {
-                variants.set(obj.__parentId, [])
-              }
-              variants.get(obj.__parentId)!.push({
-                id: obj.id,
-                title: obj.title,
-                price: obj.price,
-                compareAtPrice: obj.compareAtPrice,
-                inventoryQuantity: obj.inventoryQuantity || 0,
-                sku: obj.sku || '',
-                barcode: obj.barcode,
-                weight: obj.weight,
-                weightUnit: obj.weightUnit || 'KILOGRAMS',
-                selectedOptions: obj.selectedOptions || [],
-                inventoryItem: obj.inventoryItem || { id: '', tracked: false },
-              })
-            }
-            break
+        // Log first few objects to understand structure
+        if (index < 5) {
+          console.log(`Object ${index}:`, JSON.stringify(obj, null, 2))
+        }
 
-          case 'Image':
-            if (obj.__parentId) {
-              if (!images.has(obj.__parentId)) {
-                images.set(obj.__parentId, [])
-              }
-              images.get(obj.__parentId)!.push({
-                url: obj.url,
-                altText: obj.altText,
-                width: obj.width || 0,
-                height: obj.height || 0,
-              })
-            }
-            break
-
-          case 'Metafield':
-            if (obj.__parentId) {
-              if (!metafields.has(obj.__parentId)) {
-                metafields.set(obj.__parentId, [])
-              }
-              metafields.get(obj.__parentId)!.push({
-                namespace: obj.namespace,
-                key: obj.key,
-                value: obj.value,
-                type: obj.type,
-              })
-            }
-            break
+        // Identify object type by GID format instead of __typename
+        if (obj.id?.includes('gid://shopify/Product/') && !obj.__parentId) {
+          // This is a Product
+          productCount++
+          products.set(obj.id, {
+            id: obj.id,
+            title: obj.title,
+            handle: obj.handle,
+            description: obj.description || '',
+            productType: obj.productType || '',
+            vendor: obj.vendor || '',
+            tags: obj.tags || [],
+            status: obj.status,
+            createdAt: obj.createdAt,
+            updatedAt: obj.updatedAt,
+            totalInventory: obj.totalInventory || 0,
+            variants: [],
+            images: [],
+            metafields: [],
+          })
+        } else if (obj.id?.includes('gid://shopify/ProductVariant/') && obj.__parentId) {
+          // This is a ProductVariant
+          variantCount++
+          if (!variants.has(obj.__parentId)) {
+            variants.set(obj.__parentId, [])
+          }
+          variants.get(obj.__parentId)!.push({
+            id: obj.id,
+            title: obj.title,
+            price: obj.price,
+            compareAtPrice: obj.compareAtPrice,
+            inventoryQuantity: obj.inventoryQuantity || 0,
+            sku: obj.sku || '',
+            barcode: obj.barcode,
+            weight: obj.weight,
+            weightUnit: obj.weightUnit || 'KILOGRAMS',
+            selectedOptions: obj.selectedOptions || [],
+            inventoryItem: obj.inventoryItem || { id: '', tracked: false },
+          })
+        } else if ((obj.id?.includes('gid://shopify/MediaImage/') || obj.id?.includes('gid://shopify/ImageSource/')) && obj.__parentId) {
+          // This is an Image
+          imageCount++
+          if (!images.has(obj.__parentId)) {
+            images.set(obj.__parentId, [])
+          }
+          images.get(obj.__parentId)!.push({
+            url: obj.url,
+            altText: obj.altText,
+            width: obj.width || 0,
+            height: obj.height || 0,
+          })
+        } else if (obj.id?.includes('gid://shopify/Metafield/') && obj.__parentId) {
+          // This is a Metafield
+          if (!metafields.has(obj.__parentId)) {
+            metafields.set(obj.__parentId, [])
+          }
+          metafields.get(obj.__parentId)!.push({
+            namespace: obj.namespace,
+            key: obj.key,
+            value: obj.value,
+            type: obj.type,
+          })
         }
       } catch (parseError) {
         console.warn('Failed to parse JSONL line:', line.substring(0, 100))
       }
     })
+
+    console.log(`Parsed objects: ${productCount} products, ${variantCount} variants, ${imageCount} images`)
 
     // Reconstruct complete products
     const completeProducts: ShopifyBulkProduct[] = []
@@ -340,6 +352,7 @@ export class ShopifyBulkSync {
       completeProducts.push(product)
     })
 
+    console.log(`Reconstructed ${completeProducts.length} complete products`)
     return completeProducts
   }
 
@@ -351,7 +364,7 @@ export class ShopifyBulkSync {
     allowUpdates: boolean = false
   ): Promise<{ successful: number; failed: number; errors: string[] }> {
     const result = { successful: 0, failed: 0, errors: [] as string[] }
-    
+
     const clerkUserId = getClerkUserId()
     if (!clerkUserId) {
       throw new Error('User not authenticated')
@@ -361,7 +374,7 @@ export class ShopifyBulkSync {
       try {
         // Check if product already exists
         const existingMapping = await this.findExistingMapping(shopifyProduct.id)
-        
+
         if (existingMapping && !allowUpdates) {
           // Skip if product already imported and updates not allowed
           return { success: true, productId: shopifyProduct.id }
@@ -369,9 +382,9 @@ export class ShopifyBulkSync {
 
         // Transform Shopify product to our format
         const supabaseProduct = this.transformShopifyProduct(shopifyProduct, clerkUserId)
-        
+
         let productId: string
-        
+
         if (existingMapping) {
           // Update existing product
           const { updateProduct } = await import('@/lib/supabase/products')
@@ -387,7 +400,7 @@ export class ShopifyBulkSync {
         await upsertChannelMapping(productId, Platform.SHOPIFY, {
           external_id: shopifyProduct.id,
           sync_status: SyncStatus.SUCCESS,
-          sync_data: shopifyProduct,
+          sync_data: shopifyProduct as unknown as Json,
         })
 
         return { success: true, productId }
@@ -399,18 +412,18 @@ export class ShopifyBulkSync {
     })
 
     const results = await Promise.allSettled(promises)
-    
-    results.forEach((result) => {
-      if (result.status === 'fulfilled') {
-        if (result.value.success) {
+
+    results.forEach((promiseResult) => {
+      if (promiseResult.status === 'fulfilled') {
+        if (promiseResult.value.success) {
           result.successful++
         } else {
           result.failed++
-          result.errors.push(`Product ${result.value.productId}: ${result.value.error}`)
+          result.errors.push(`Product ${promiseResult.value.productId}: ${promiseResult.value.error}`)
         }
       } else {
         result.failed++
-        result.errors.push(result.reason.message || 'Promise rejected')
+        result.errors.push(promiseResult.reason?.message || 'Promise rejected')
       }
     })
 
@@ -421,16 +434,16 @@ export class ShopifyBulkSync {
    * Find existing channel mapping for a Shopify product
    */
   private async findExistingMapping(shopifyProductId: string) {
-    const { createClient } = await import('@/lib/supabase/server')
-    const supabase = createClient()
-    
+    const { createServiceRoleClient } = await import('@/lib/supabase/server')
+    const supabase = createServiceRoleClient()
+
     const { data } = await supabase
       .from('channel_mappings')
       .select('product_id')
       .eq('platform', Platform.SHOPIFY)
       .eq('external_id', shopifyProductId)
       .single()
-    
+
     return data
   }
 
@@ -439,7 +452,7 @@ export class ShopifyBulkSync {
    */
   private transformShopifyProduct(shopifyProduct: ShopifyBulkProduct, clerkUserId: string): any {
     const firstVariant = shopifyProduct.variants[0]
-    
+
     return {
       title: shopifyProduct.title,
       description: shopifyProduct.description || null,

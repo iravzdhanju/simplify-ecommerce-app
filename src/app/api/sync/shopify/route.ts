@@ -77,10 +77,9 @@ export async function POST(req: NextRequest) {
     const shopifyProductData = transformProductForShopify(product)
     
     try {
-      // TODO: Agent A will implement the actual Shopify API call here
-      // For now, we'll simulate the sync operation
+      // Use the enhanced Shopify sync
       const syncResult = await syncProductToShopify(
-        shopifyProductData,
+        productId,
         connection.credentials,
         operation as SyncOperation
       )
@@ -204,7 +203,7 @@ function transformProductForShopify(product: any) {
  * Sync product to Shopify using the new GraphQL client
  */
 async function syncProductToShopify(
-  productData: any,
+  productId: string,
   credentials: any,
   operation: SyncOperation
 ): Promise<{ externalId: string; responseData: any }> {
@@ -217,13 +216,7 @@ async function syncProductToShopify(
     scope: credentials.scope || 'write_products,read_products',
   })
   
-  // Extract product ID from the sync request
-  const productId = productData.productId || productData.product?.id
-  if (!productId) {
-    throw new Error('Product ID is required for sync operation')
-  }
-  
-  // Perform the sync operation
+  // Use the productId from the request parameters
   const result = await shopifySync.syncProductToShopify(productId, operation)
   
   if (!result.success) {

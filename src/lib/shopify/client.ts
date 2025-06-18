@@ -35,17 +35,17 @@ export class ShopifyGraphQLClient {
    * Execute GraphQL query with automatic rate limiting and error handling
    */
   async executeQuery<T = any>(
-    query: string, 
+    query: string,
     variables?: any,
     operationName?: string
   ): Promise<T> {
     const estimatedCost = this.estimateQueryCost(query, variables)
-    
+
     // Wait for rate limit capacity
     await this.rateLimiter.waitForCapacity(estimatedCost)
-    
+
     const startTime = Date.now()
-    
+
     try {
       const response = await fetch(
         `https://${this.config.shopDomain}/admin/api/${this.apiVersion}/graphql.json`,
@@ -64,11 +64,12 @@ export class ShopifyGraphQLClient {
       )
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorText = await response.text().catch(() => 'Unable to read error response')
+        throw new Error(`Shopify API error (${response.status}): ${errorText}`)
       }
 
       const data = await response.json()
-      
+
       // Update rate limiter with actual cost
       if (data.extensions?.cost) {
         this.rateLimiter.updateActualCost(data.extensions.cost)
@@ -96,7 +97,7 @@ export class ShopifyGraphQLClient {
     } catch (error) {
       const executionTime = Date.now() - startTime
       console.error('GraphQL query failed:', {
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         query: query.substring(0, 200),
         variables,
         executionTime,
@@ -132,7 +133,7 @@ export class ShopifyGraphQLClient {
     `
 
     const result = await this.executeQuery(mutation, { query })
-    
+
     if (result.bulkOperationRunQuery.userErrors.length > 0) {
       throw new Error(`Bulk operation failed: ${result.bulkOperationRunQuery.userErrors[0].message}`)
     }
@@ -193,12 +194,12 @@ export class ShopifyGraphQLClient {
     // Basic cost estimation - in production, use more sophisticated analysis
     const fieldCount = (query.match(/\w+/g) || []).length
     const connectionCount = (query.match(/\(\s*first:\s*\d+/g) || []).length
-    
+
     return Math.max(1, fieldCount + (connectionCount * 10))
   }
 
   private async handleThrottleError(cost: number): Promise<void> {
-    const waitTime = Math.ceil(cost / this.rateLimiter.pointsPerSecond) * 1000
+    const waitTime = Math.ceil(cost / this.rateLimiter.rateLimit) * 1000
     console.warn(`Rate limited, waiting ${waitTime}ms`)
     await new Promise(resolve => setTimeout(resolve, waitTime))
   }
@@ -234,9 +235,12 @@ class ShopifyRateLimiter {
     this.currentCost += estimatedCost
   }
 
-  updateActualCost(actualCost: number): void {
+  updateActualCost(costData: any): void {
     // Adjust based on actual vs estimated cost
-    this.currentCost = Math.max(0, this.currentCost + actualCost.actualQueryCost - actualCost.estimatedCost || 0)
+    if (costData && typeof costData === 'object' && 'actualQueryCost' in costData) {
+      const adjustment = costData.actualQueryCost - (costData.estimatedCost || 0)
+      this.currentCost = Math.max(0, this.currentCost + adjustment)
+    }
   }
 
   private refillBucket(): void {
@@ -248,7 +252,7 @@ class ShopifyRateLimiter {
     this.lastRefill = now
   }
 
-  get pointsPerSecond(): number {
+  get rateLimit(): number {
     return this.pointsPerSecond
   }
 }

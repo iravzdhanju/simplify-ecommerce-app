@@ -31,7 +31,7 @@ type ClerkWebhookEvent = {
 export async function POST(req: NextRequest) {
   try {
     // Get headers
-    const headerPayload = headers()
+    const headerPayload = await headers()
     const svix_id = headerPayload.get('svix-id')
     const svix_timestamp = headerPayload.get('svix-timestamp')
     const svix_signature = headerPayload.get('svix-signature')
@@ -46,9 +46,8 @@ export async function POST(req: NextRequest) {
 
     // Get the request body
     const payload = await req.text()
-
     // Create Svix webhook instance
-    const wh = new Webhook(webhookSecret)
+    const wh = new Webhook(webhookSecret as string)
 
     let evt: ClerkWebhookEvent
 
@@ -98,7 +97,7 @@ export async function POST(req: NextRequest) {
 async function handleUserCreated(supabase: any, user: ClerkUser) {
   try {
     const primaryEmail = user.email_addresses.find(email => email.id === user.email_addresses[0]?.id)
-    
+
     if (!primaryEmail) {
       console.error('No primary email found for user:', user.id)
       return
@@ -155,7 +154,7 @@ async function handleUserCreated(supabase: any, user: ClerkUser) {
 async function handleUserUpdated(supabase: any, user: ClerkUser) {
   try {
     const primaryEmail = user.email_addresses.find(email => email.id === user.email_addresses[0]?.id)
-    
+
     if (!primaryEmail) {
       console.error('No primary email found for user:', user.id)
       return
