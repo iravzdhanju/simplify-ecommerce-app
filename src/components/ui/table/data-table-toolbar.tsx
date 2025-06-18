@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Cross2Icon } from '@radix-ui/react-icons';
+import { useDebounce } from '@/hooks/use-debounce';
 
 interface DataTableToolbarProps<TData> extends React.ComponentProps<'div'> {
   table: Table<TData>;
@@ -82,14 +83,7 @@ function DataTableToolbarFilter<TData>({
 
       switch (columnMeta.variant) {
         case 'text':
-          return (
-            <Input
-              placeholder={columnMeta.placeholder ?? columnMeta.label}
-              value={(column.getFilterValue() as string) ?? ''}
-              onChange={(event) => column.setFilterValue(event.target.value)}
-              className='h-8 w-40 lg:w-56'
-            />
-          );
+          return <TextFilterInput column={column} columnMeta={columnMeta} />;
 
         case 'number':
           return (
@@ -146,4 +140,34 @@ function DataTableToolbarFilter<TData>({
 
     return onFilterRender();
   }
+}
+
+// Local component to handle debounced text filter input
+function TextFilterInput<TData>({
+  column,
+  columnMeta
+}: {
+  column: Column<TData>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  columnMeta: any;
+}) {
+  const [searchValue, setSearchValue] = React.useState<string>(
+    (column.getFilterValue() as string) ?? ''
+  );
+
+  const debouncedValue = useDebounce(searchValue, 300);
+
+  React.useEffect(() => {
+    column.setFilterValue(debouncedValue);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedValue]);
+
+  return (
+    <Input
+      placeholder={columnMeta.placeholder ?? columnMeta.label}
+      value={searchValue}
+      onChange={(event) => setSearchValue(event.target.value)}
+      className='h-8 w-40 lg:w-56'
+    />
+  );
 }
