@@ -1,6 +1,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getClerkUserId, getAuthenticatedUserId } from './auth'
 import type { Product, InsertProduct, UpdateProduct } from '@/types/database'
+import { getActiveShopifyConnections } from './platform-connections'
 
 /**
  * Get all products for the authenticated user
@@ -12,63 +13,55 @@ export async function getUserProducts(): Promise<Product[]> {
     throw new Error('User not authenticated')
   }
 
+  // Only return products when the user has an active Shopify store connected.
+  // If there are no active connections, return an empty list so that
+  // the UI shows nothing instead of demo products.
   try {
-    // Use service role client so we can freely join across tables without RLS headaches
-    const supabase = createServiceRoleClient()
+    const { getActiveShopifyConnections } = await import('./platform-connections')
+    const activeConnections = await getActiveShopifyConnections()
 
-    // 1. Find which platforms still have at least one ACTIVE connection for this user
-    const { data: activeConnections, error: connError } = await supabase
-      .from('platform_connections')
-      .select('platform')
-      .eq('clerk_user_id', clerkUserId)
-      .eq('is_active', true)
-
-    if (connError) {
-      console.warn('Could not fetch active connections, returning demo data:', connError.message)
-      return getDemoProducts()
-    }
-
-    const activePlatforms = (activeConnections || []).map((c: any) => c.platform)
-
-    // If there are no active connections we return an empty list so disconnected stores are hidden
-    if (activePlatforms.length === 0) {
+    if (activeConnections.length === 0) {
+      // No store connected → no products to show.
       return []
     }
-
-    // 2. Fetch products that have at least one channel mapping tied to an active platform
-    const { data, error } = await supabase
-      .from('products')
-      .select(
-        `*,
-        channel_mappings!inner (
-          platform
-        )`
-      )
-      .eq('clerk_user_id', clerkUserId)
-      .in('channel_mappings.platform', activePlatforms)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.warn('Database error, returning demo data:', error.message)
-      return getDemoProducts()
-    }
-
-    // If no data, fall back to demo products as before (for dev environments)
-    if (!data || data.length === 0) {
-      return []
-    }
-
-    // Strip nested channel_mappings and deduplicate by product id
-    const uniqueMap = new Map<string, Product>()
-    data.forEach((p: any) => {
-      const { channel_mappings, ...rest } = p
-      uniqueMap.set(rest.id, rest as Product)
-    })
-    return Array.from(uniqueMap.values())
-  } catch (error) {
-    console.warn('Database connection failed, returning demo data:', error)
-    return getDemoProducts()
+  } catch (err) {
+    // If for some reason the check fails we still proceed with fetching products
+    console.error('Failed to verify active shopify connections:', err)
   }
+
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('clerk_user_id', clerkUserId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    throw new Error(`Failed to fetch products: ${error.message}`)
+  }
+
+  let products: Product[] = data || []
+
+  // Fallback: if no Supabase products, retrieve directly from Shopify using the first active connection.
+  if (products.length === 0) {
+    try {
+      const connections = await getActiveShopifyConnections()
+      if (connections.length > 0) {
+        const credentials = connections[0].credentials as any
+        const shopDomain: string | undefined = credentials?.shop_domain
+        const accessToken: string | undefined = credentials?.access_token
+
+        if (shopDomain && accessToken) {
+          products = await fetchShopifyProducts(shopDomain, accessToken)
+        }
+      }
+    } catch (fallbackErr) {
+      console.error('Shopify fallback fetch failed:', fallbackErr)
+    }
+  }
+
+  return products
 }
 
 /**
@@ -365,4 +358,64 @@ export async function getProductsByStatus(status: string): Promise<Product[]> {
   }
 
   return data || []
+}
+
+// ------------ Helpers ------------
+
+async function fetchShopifyProducts(shopDomain: string, accessToken: string): Promise<Product[]> {
+  try {
+    const response = await fetch(`https://${shopDomain}/admin/api/2023-10/products.json?limit=250`, {
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+    })
+
+    if (!response.ok) {
+      throw new Error(`Shopify API responded with status ${response.status}`)
+    }
+
+    const json = await response.json()
+    const shopifyProducts = json.products || []
+
+    // Map Shopify product to Supabase-like schema (raw), not UI Product.
+    const mapped = shopifyProducts.map((p: any) => ({
+      id: p.id?.toString() || crypto.randomUUID(),
+      title: p.title,
+      description: p.body_html || '',
+      price: Number(p.variants?.[0]?.price || 0),
+      category: p.product_type || 'Uncategorized',
+      images: (p.images || []).map((img: any) => img.src),
+      marketplace: ['Shopify'],
+      sku: p.variants?.[0]?.sku,
+      brand: p.vendor,
+      inventory: p.variants?.[0]?.inventory_quantity,
+      status: mapShopifyStatus(p.status),
+      tags: p.tags ? p.tags.split(',').map((t: string) => t.trim()) : [],
+      created_at: p.created_at,
+      updated_at: p.updated_at,
+    }))
+
+    return mapped
+  } catch (err) {
+    console.error('Error fetching products from Shopify:', err)
+    return []
+  }
+}
+
+function mapShopifyStatus(status: string): string {
+  switch (status) {
+    case 'active':
+    case 'ACTIVE':
+      return 'active'
+    case 'draft':
+    case 'DRAFT':
+      return 'draft'
+    case 'archived':
+    case 'ARCHIVED':
+      return 'inactive'
+    default:
+      return 'active'
+  }
 }

@@ -24,6 +24,11 @@ const baseConfig: NextConfig = {
         protocol: 'https',
         hostname: 'unsplash.com',
         port: ''
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn.shopify.com',
+        port: ''
       }
     ]
   },

@@ -8,6 +8,30 @@ import Image from 'next/image';
 import { CellAction } from './cell-action';
 import { CATEGORY_OPTIONS, MARKETPLACE_OPTIONS } from './options';
 
+// Helper functions for text cleanup
+function stripHtml(html: string): string {
+  if (!html) return '';
+  return html.replace(/<[^>]*>?/gm, '');
+}
+
+/**
+ * Character-based truncate that keeps exactly `maxLength` characters (including ellipsis).
+ * 1. Collapses whitespace so count is predictable.
+ * 2. Returns as-is when under limit.
+ */
+
+function truncate(text: string, maxLength = 100): string {
+  if (!text) return '';
+
+  const ellipsis = '…';
+  const normalised = text.replace(/\s+/g, ' ').trim();
+
+  if (normalised.length <= maxLength) return normalised;
+
+  const sliceLength = Math.max(maxLength - ellipsis.length, 0);
+  return normalised.slice(0, sliceLength).trimEnd() + ellipsis;
+}
+
 export const columns: ColumnDef<Product>[] = [
   {
     accessorKey: 'photo_url',
@@ -100,9 +124,14 @@ export const columns: ColumnDef<Product>[] = [
   },
   {
     accessorKey: 'description',
-    header: 'DESCRIPTION'
+    header: 'DESCRIPTION',
+    cell: ({ cell }) => {
+      const raw = cell.getValue<Product['description']>() || '';
+      const cleaned = stripHtml(raw);
+      const truncated = truncate(cleaned, 55);
+      return <div title={cleaned}>{truncated}</div>;
+    }
   },
-
   {
     id: 'actions',
     cell: ({ row }) => <CellAction data={row.original} />

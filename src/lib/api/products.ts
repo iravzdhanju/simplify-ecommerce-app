@@ -55,7 +55,7 @@ interface ProductResponse {
 function transformProduct(supabaseProduct: any): Product {
   return {
     id: supabaseProduct.id,
-    name: supabaseProduct.title,
+    name: supabaseProduct.title ?? supabaseProduct.name ?? 'Untitled',
     description: supabaseProduct.description || '',
     price: supabaseProduct.price || 0,
     category: supabaseProduct.category || 'Uncategorized',
@@ -94,26 +94,26 @@ export const productsApi = {
   }): Promise<Product[]> {
     try {
       const response = await apiRequest('/api/products')
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       const data = await response.json()
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to fetch products')
       }
-      
+
       let products: Product[] = data.data.map(transformProduct)
-      
+
       // Apply client-side filtering for categories
       if (categories.length > 0) {
         products = products.filter((product) =>
           categories.includes(product.category)
         )
       }
-      
+
       // Apply client-side search
       if (search) {
         const searchLower = search.toLowerCase()
@@ -125,7 +125,7 @@ export const productsApi = {
           product.sku?.toLowerCase().includes(searchLower)
         )
       }
-      
+
       return products
     } catch (error) {
       console.error('Error fetching products:', error)
@@ -153,11 +153,11 @@ export const productsApi = {
         categories: categoriesArray,
         search,
       })
-      
+
       const totalProducts = allProducts.length
       const offset = (page - 1) * limit
       const paginatedProducts = allProducts.slice(offset, offset + limit)
-      
+
       return {
         success: true,
         time: new Date().toISOString(),
@@ -187,7 +187,7 @@ export const productsApi = {
   async getProductById(id: string): Promise<ProductResponse> {
     try {
       const response = await apiRequest(`/api/products/${id}`)
-      
+
       if (!response.ok) {
         if (response.status === 404) {
           return {
@@ -199,13 +199,13 @@ export const productsApi = {
         }
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       const data = await response.json()
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to fetch product')
       }
-      
+
       return {
         success: true,
         time: new Date().toISOString(),
@@ -241,7 +241,7 @@ export const productsApi = {
         images: productData.images || [],
         status: productData.status || 'draft',
       }
-      
+
       const response = await apiRequest('/api/products', {
         method: 'POST',
         headers: {
@@ -249,17 +249,17 @@ export const productsApi = {
         },
         body: JSON.stringify(supabaseFormat),
       })
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       const data = await response.json()
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to create product')
       }
-      
+
       return {
         success: true,
         time: new Date().toISOString(),
@@ -290,7 +290,7 @@ export const productsApi = {
         images: productData.images,
         status: productData.status,
       }
-      
+
       const response = await apiRequest(`/api/products/${id}`, {
         method: 'PUT',
         headers: {
@@ -298,17 +298,17 @@ export const productsApi = {
         },
         body: JSON.stringify(supabaseFormat),
       })
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       const data = await response.json()
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to update product')
       }
-      
+
       return {
         success: true,
         time: new Date().toISOString(),
@@ -329,17 +329,17 @@ export const productsApi = {
       const response = await apiRequest(`/api/products/${id}`, {
         method: 'DELETE',
       })
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       const data = await response.json()
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to delete product')
       }
-      
+
       return {
         success: true,
         message: 'Product deleted successfully',
@@ -369,13 +369,13 @@ export const productsApi = {
           operation,
         }),
       })
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       const data = await response.json()
-      
+
       return {
         success: data.success,
         message: data.success ? 'Product synced to Shopify successfully' : data.error,
@@ -406,12 +406,12 @@ export const productsApi = {
       // This would call a dedicated sync status endpoint
       // For now, we'll calculate from the products data
       const products = await this.getAll({})
-      
+
       const totalProducts = products.length
       const syncedProducts = products.filter(p => p.sync_status?.shopify === 'success').length
       const pendingSync = products.filter(p => !p.sync_status || p.sync_status.shopify === 'pending').length
       const errorCount = products.filter(p => p.sync_status?.shopify === 'error').length
-      
+
       return {
         success: true,
         data: {
