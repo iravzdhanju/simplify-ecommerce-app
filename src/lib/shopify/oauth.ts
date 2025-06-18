@@ -37,7 +37,7 @@ export class ShopifyOAuth {
 
     // Generate secure state parameter
     const state = this.generateState(userId)
-    
+
     const params = new URLSearchParams({
       client_id: this.config.clientId,
       scope: this.config.scopes.join(','),
@@ -47,7 +47,7 @@ export class ShopifyOAuth {
     })
 
     const authUrl = `https://${shop}/admin/oauth/authorize?${params.toString()}`
-    
+
     return { url: authUrl, state }
   }
 
@@ -64,13 +64,13 @@ export class ShopifyOAuth {
   ): Promise<ShopifyCredentials> {
     // Validate callback parameters
     this.validateCallback(shop, code, state, storedState, hmac, timestamp)
-    
+
     // Exchange authorization code for access token
     const credentials = await this.exchangeCodeForToken(shop, code)
-    
+
     // Verify the access token by making a test API call
     await this.verifyAccessToken(shop, credentials.access_token)
-    
+
     return credentials
   }
 
@@ -80,7 +80,7 @@ export class ShopifyOAuth {
   async storeConnection(
     credentials: ShopifyCredentials,
     connectionName: string,
-    configuration: ShopifyConfiguration = {}
+    configuration: Partial<ShopifyConfiguration> = {}
   ) {
     const defaultConfig: ShopifyConfiguration = {
       auto_sync: false,
@@ -101,9 +101,10 @@ export class ShopifyOAuth {
   /**
    * Exchange authorization code for access token
    */
+
   private async exchangeCodeForToken(shop: string, code: string): Promise<ShopifyCredentials> {
     const tokenEndpoint = `https://${shop}/admin/oauth/access_token`
-    
+
     const response = await fetch(tokenEndpoint, {
       method: 'POST',
       headers: {
@@ -122,12 +123,12 @@ export class ShopifyOAuth {
     }
 
     const tokenData = await response.json()
-    
+
     return {
       access_token: tokenData.access_token,
       shop_domain: shop,
       scope: tokenData.scope,
-      expires_at: tokenData.expires_in 
+      expires_at: tokenData.expires_in
         ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
         : undefined,
     }
@@ -138,7 +139,7 @@ export class ShopifyOAuth {
    */
   private async verifyAccessToken(shop: string, accessToken: string): Promise<void> {
     const testEndpoint = `https://${shop}/admin/api/2025-01/shop.json`
-    
+
     const response = await fetch(testEndpoint, {
       headers: {
         'X-Shopify-Access-Token': accessToken,
@@ -151,7 +152,7 @@ export class ShopifyOAuth {
     }
 
     const shopData = await response.json()
-    
+
     if (!shopData.shop) {
       throw new Error('Invalid response from Shopify API')
     }
@@ -205,7 +206,7 @@ export class ShopifyOAuth {
     // Check timestamp freshness (within 5 minutes)
     const timestampNum = parseInt(timestamp, 10)
     const now = Math.floor(Date.now() / 1000)
-    
+
     if (Math.abs(now - timestampNum) > 300) {
       throw new Error('Request timestamp too old')
     }
@@ -232,7 +233,7 @@ export class ShopifyOAuth {
   private generateState(userId: string): string {
     const nonce = crypto.randomBytes(16).toString('hex')
     const timestamp = Date.now()
-    
+
     const stateData: OAuthState = {
       nonce,
       userId,
@@ -260,7 +261,7 @@ export class ShopifyOAuth {
       // Check state expiry (30 minutes)
       const now = Date.now()
       const stateAge = now - stateData.timestamp
-      
+
       if (stateAge > 30 * 60 * 1000) {
         throw new Error('State parameter expired')
       }
@@ -285,10 +286,10 @@ export class ShopifyOAuth {
   async refreshAccessToken(credentials: ShopifyCredentials): Promise<ShopifyCredentials> {
     // Note: Shopify access tokens typically don't expire
     // This method is here for completeness and future-proofing
-    
+
     // For now, just verify the token is still valid
     await this.verifyAccessToken(credentials.shop_domain, credentials.access_token)
-    
+
     return {
       ...credentials,
       expires_at: undefined, // Shopify tokens don't typically expire
@@ -301,7 +302,7 @@ export class ShopifyOAuth {
   async revokeAccessToken(credentials: ShopifyCredentials): Promise<void> {
     // Shopify doesn't have a standard token revocation endpoint
     // Tokens are revoked when the app is uninstalled from the shop
-    
+
     // We can test if the token is still valid
     try {
       await this.verifyAccessToken(credentials.shop_domain, credentials.access_token)

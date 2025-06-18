@@ -1,5 +1,5 @@
 import { ShopifyGraphQLClient } from './client'
-import { 
+import {
   CREATE_PRODUCT_MUTATION,
   UPDATE_PRODUCT_MUTATION,
   DELETE_PRODUCT_MUTATION,
@@ -8,20 +8,21 @@ import {
   CREATE_PRODUCT_MEDIA_MUTATION,
   CREATE_STAGED_UPLOADS_MUTATION
 } from './queries'
-import { 
-  updateSyncStatus, 
+import {
+  updateSyncStatus,
   logSyncOperation,
-  upsertChannelMapping 
+  upsertChannelMapping
 } from '@/lib/supabase/sync'
 import { getUserProduct } from '@/lib/supabase/products'
-import { 
-  Platform, 
-  SyncStatus, 
-  SyncOperation, 
+import {
+  Platform,
+  SyncStatus,
+  SyncOperation,
   LogStatus,
   Product,
-  ShopifyCredentials 
+  ShopifyCredentials
 } from '@/types/database'
+import { createClient } from '@/lib/supabase/server'
 
 interface ShopifyProductData {
   product: {
@@ -78,7 +79,7 @@ interface SyncResult {
 export class ShopifyProductSync {
   private client: ShopifyGraphQLClient
   private credentials: ShopifyCredentials
-  
+
   constructor(credentials: ShopifyCredentials) {
     this.credentials = credentials
     this.client = new ShopifyGraphQLClient({
@@ -95,11 +96,11 @@ export class ShopifyProductSync {
     operation: SyncOperation = SyncOperation.CREATE
   ): Promise<SyncResult> {
     const startTime = Date.now()
-    
+
     try {
       // Update sync status to syncing
       await updateSyncStatus(productId, Platform.SHOPIFY, SyncStatus.SYNCING)
-      
+
       // Get product from Supabase
       const product = await getUserProduct(productId)
       if (!product) {
@@ -107,7 +108,7 @@ export class ShopifyProductSync {
       }
 
       let result: SyncResult
-      
+
       switch (operation) {
         case SyncOperation.CREATE:
           result = await this.createShopifyProduct(product)
@@ -147,10 +148,10 @@ export class ShopifyProductSync {
       return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      
+
       // Update sync status to error
       await updateSyncStatus(productId, Platform.SHOPIFY, SyncStatus.ERROR, undefined, errorMessage)
-      
+
       // Log failed operation
       await logSyncOperation(
         productId,
@@ -175,7 +176,7 @@ export class ShopifyProductSync {
    */
   private async createShopifyProduct(product: Product): Promise<SyncResult> {
     const shopifyProduct = this.transformProductForShopify(product)
-    
+
     const result = await this.client.executeQuery(
       CREATE_PRODUCT_MUTATION,
       { input: shopifyProduct }
@@ -187,7 +188,7 @@ export class ShopifyProductSync {
     }
 
     const createdProduct = result.productCreate.product
-    
+
     // Upload images if any
     if (product.images && product.images.length > 0) {
       await this.uploadProductImages(createdProduct.id, product.images)
@@ -218,6 +219,7 @@ export class ShopifyProductSync {
     }
 
     const shopifyProduct = this.transformProductForShopify(product)
+    // @ts-ignore
     shopifyProduct.product.id = channelMapping.external_id
 
     const result = await this.client.executeQuery(
@@ -275,7 +277,7 @@ export class ShopifyProductSync {
    */
   private transformProductForShopify(product: Product): ShopifyProductData {
     const variants = []
-    
+
     // Create default variant with product data
     variants.push({
       price: product.price?.toString() || '0.00',
@@ -348,7 +350,7 @@ export class ShopifyProductSync {
    * Set app-specific metafields on Shopify product
    */
   private async setProductMetafields(
-    productId: string, 
+    productId: string,
     metafields: Record<string, string>
   ): Promise<void> {
     const metafieldInputs = Object.entries(metafields).map(([key, value]) => ({
@@ -376,16 +378,15 @@ export class ShopifyProductSync {
   private async getChannelMapping(productId: string) {
     // This would use our existing Supabase function
     // For now, simplified implementation
-    const { createClient } = await import('@/lib/supabase/server')
-    const supabase = createClient()
-    
+    const supabase = await createClient()
+
     const { data } = await supabase
       .from('channel_mappings')
       .select('*')
       .eq('product_id', productId)
       .eq('platform', Platform.SHOPIFY)
       .single()
-    
+
     return data
   }
 
@@ -436,7 +437,7 @@ export class ShopifyProductSync {
    */
   private transformShopifyProductToSupabase(shopifyProduct: any): any {
     const firstVariant = shopifyProduct.variants.edges[0]?.node
-    
+
     return {
       title: shopifyProduct.title,
       description: shopifyProduct.description || null,

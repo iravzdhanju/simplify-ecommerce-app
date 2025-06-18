@@ -6,7 +6,7 @@ import { getClerkUserId } from '@/lib/supabase/auth'
 export async function GET() {
   try {
     requireAuth()
-    
+
     const userId = getClerkUserId()
     if (!userId) {
       return NextResponse.json(
@@ -14,9 +14,8 @@ export async function GET() {
         { status: 401 }
       )
     }
+    const supabase = await createClient()
 
-    const supabase = createClient()
-    
     // Get total products count
     const { count: totalProducts } = await supabase
       .from('products')
@@ -46,7 +45,7 @@ export async function GET() {
     // Get successful syncs in last 24h
     const yesterday = new Date()
     yesterday.setDate(yesterday.getDate() - 1)
-    
+
     const { count: recentSyncs } = await supabase
       .from('sync_logs')
       .select('*', { count: 'exact', head: true })
@@ -63,7 +62,7 @@ export async function GET() {
     // Get sync success rate (last 30 days)
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-    
+
     const { data: syncStats } = await supabase
       .from('sync_logs')
       .select('status')
@@ -76,7 +75,7 @@ export async function GET() {
     // Calculate trends (compare with previous period)
     const twoMonthsAgo = new Date()
     twoMonthsAgo.setDate(twoMonthsAgo.getDate() - 60)
-    
+
     const { data: previousStats } = await supabase
       .from('sync_logs')
       .select('status')
@@ -100,7 +99,7 @@ export async function GET() {
         connections: {
           total: totalConnections || 0,
           active: activeConnections || 0,
-          trend: totalConnections > 0 ? '+100' : '0'
+          trend: totalConnections && totalConnections > 0 ? '+100' : '0'
         },
         sync: {
           recentSyncs: recentSyncs || 0,
@@ -117,14 +116,14 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Dashboard metrics API error:', error)
-    
+
     if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Failed to fetch dashboard metrics' },
       { status: 500 }

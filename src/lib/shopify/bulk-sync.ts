@@ -3,7 +3,7 @@ import { BULK_PRODUCTS_QUERY } from './queries'
 import { createProduct } from '@/lib/supabase/products'
 import { upsertChannelMapping } from '@/lib/supabase/sync'
 import { getClerkUserId } from '@/lib/supabase/auth'
-import { Platform, SyncStatus, ShopifyCredentials } from '@/types/database'
+import { Platform, SyncStatus, ShopifyCredentials, Json } from '@/types/database'
 
 interface BulkSyncResult {
   totalProducts: number
@@ -95,45 +95,45 @@ export class ShopifyBulkSync {
 
     try {
       console.log('Starting bulk product import from Shopify...')
-      
+
       // Check if we have valid credentials first
       if (!this.credentials.access_token || !this.credentials.shop_domain) {
         throw new Error('Invalid Shopify credentials: Missing access token or shop domain')
       }
-      
+
       // Start bulk operation
       const bulkOperation = await this.client.executeBulkOperation(BULK_PRODUCTS_QUERY)
-      
+
       console.log(`Bulk operation completed. Processing ${bulkOperation.objectCount} objects...`)
-      
+
       // Download and process results
       const products = await this.downloadBulkResults(bulkOperation.url)
       result.totalProducts = products.length
-      
+
       // Process products in batches
       const batchSize = 10
       for (let i = 0; i < products.length; i += batchSize) {
         const batch = products.slice(i, i + batchSize)
         const batchResults = await this.processBatch(batch)
-        
+
         result.successfulImports += batchResults.successful
         result.failedImports += batchResults.failed
         result.errors.push(...batchResults.errors)
-        
+
         // Log progress
         const processed = Math.min(i + batchSize, products.length)
         console.log(`Processed ${processed}/${products.length} products`)
       }
-      
+
       result.processingTime = Date.now() - startTime
-      
+
       console.log('Bulk import completed:', {
         total: result.totalProducts,
         successful: result.successfulImports,
         failed: result.failedImports,
         time: `${result.processingTime}ms`,
       })
-      
+
       return result
     } catch (error) {
       console.error('Bulk import failed:', error)
@@ -148,7 +148,7 @@ export class ShopifyBulkSync {
    */
   async performIncrementalSync(since?: Date): Promise<BulkSyncResult> {
     const sinceDate = since || new Date(Date.now() - 24 * 60 * 60 * 1000) // Default: last 24 hours
-    
+
     const incrementalQuery = `
       {
         products(query: "updated_at:>='${sinceDate.toISOString()}'") {
@@ -215,10 +215,10 @@ export class ShopifyBulkSync {
     `
 
     console.log(`Starting incremental sync since ${sinceDate.toISOString()}...`)
-    
+
     const bulkOperation = await this.client.executeBulkOperation(incrementalQuery)
     const products = await this.downloadBulkResults(bulkOperation.url)
-    
+
     // Process incrementally - update existing products or create new ones
     const result: BulkSyncResult = {
       totalProducts: products.length,
@@ -230,7 +230,7 @@ export class ShopifyBulkSync {
 
     const startTime = Date.now()
     const batchResults = await this.processBatch(products, true) // true = allow updates
-    
+
     result.successfulImports = batchResults.successful
     result.failedImports = batchResults.failed
     result.errors = batchResults.errors
@@ -250,9 +250,9 @@ export class ShopifyBulkSync {
 
     const jsonlData = await response.text()
     const lines = jsonlData.split('\n').filter(line => line.trim())
-    
+
     console.log(`Downloaded JSONL with ${lines.length} lines`)
-    
+
     // Parse JSONL format and reconstruct products
     const products = new Map<string, ShopifyBulkProduct>()
     const variants = new Map<string, ShopifyBulkVariant[]>()
@@ -263,16 +263,16 @@ export class ShopifyBulkSync {
     let productCount = 0
     let variantCount = 0
     let imageCount = 0
-    
+
     lines.forEach((line, index) => {
       try {
         const obj = JSON.parse(line)
-        
+
         // Log first few objects to understand structure
         if (index < 5) {
           console.log(`Object ${index}:`, JSON.stringify(obj, null, 2))
         }
-        
+
         // Identify object type by GID format instead of __typename
         if (obj.id?.includes('gid://shopify/Product/') && !obj.__parentId) {
           // This is a Product
@@ -364,7 +364,7 @@ export class ShopifyBulkSync {
     allowUpdates: boolean = false
   ): Promise<{ successful: number; failed: number; errors: string[] }> {
     const result = { successful: 0, failed: 0, errors: [] as string[] }
-    
+
     const clerkUserId = getClerkUserId()
     if (!clerkUserId) {
       throw new Error('User not authenticated')
@@ -374,7 +374,7 @@ export class ShopifyBulkSync {
       try {
         // Check if product already exists
         const existingMapping = await this.findExistingMapping(shopifyProduct.id)
-        
+
         if (existingMapping && !allowUpdates) {
           // Skip if product already imported and updates not allowed
           return { success: true, productId: shopifyProduct.id }
@@ -382,9 +382,9 @@ export class ShopifyBulkSync {
 
         // Transform Shopify product to our format
         const supabaseProduct = this.transformShopifyProduct(shopifyProduct, clerkUserId)
-        
+
         let productId: string
-        
+
         if (existingMapping) {
           // Update existing product
           const { updateProduct } = await import('@/lib/supabase/products')
@@ -400,7 +400,7 @@ export class ShopifyBulkSync {
         await upsertChannelMapping(productId, Platform.SHOPIFY, {
           external_id: shopifyProduct.id,
           sync_status: SyncStatus.SUCCESS,
-          sync_data: shopifyProduct,
+          sync_data: shopifyProduct as unknown as Json,
         })
 
         return { success: true, productId }
@@ -412,7 +412,7 @@ export class ShopifyBulkSync {
     })
 
     const results = await Promise.allSettled(promises)
-    
+
     results.forEach((promiseResult) => {
       if (promiseResult.status === 'fulfilled') {
         if (promiseResult.value.success) {
@@ -436,14 +436,14 @@ export class ShopifyBulkSync {
   private async findExistingMapping(shopifyProductId: string) {
     const { createServiceRoleClient } = await import('@/lib/supabase/server')
     const supabase = createServiceRoleClient()
-    
+
     const { data } = await supabase
       .from('channel_mappings')
       .select('product_id')
       .eq('platform', Platform.SHOPIFY)
       .eq('external_id', shopifyProductId)
       .single()
-    
+
     return data
   }
 
@@ -452,7 +452,7 @@ export class ShopifyBulkSync {
    */
   private transformShopifyProduct(shopifyProduct: ShopifyBulkProduct, clerkUserId: string): any {
     const firstVariant = shopifyProduct.variants[0]
-    
+
     return {
       title: shopifyProduct.title,
       description: shopifyProduct.description || null,

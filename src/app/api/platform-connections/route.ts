@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { 
-  getUserPlatformConnections, 
-  createPlatformConnection 
+import {
+  getUserPlatformConnections,
+  createPlatformConnection
 } from '@/lib/supabase/platform-connections'
 import { requireAuth } from '@/lib/supabase/auth'
-import { Platform } from '@/types/database'
+import { Platform, ShopifyCredentials } from '@/types/database'
 import { z } from 'zod'
 
 const createConnectionSchema = z.object({
@@ -31,23 +31,23 @@ const createConnectionSchema = z.object({
 export async function GET() {
   try {
     requireAuth()
-    
+
     const connections = await getUserPlatformConnections()
-    
+
     return NextResponse.json({
       success: true,
       data: connections,
     })
   } catch (error) {
     console.error('GET /api/platform-connections error:', error)
-    
+
     if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Failed to fetch platform connections' },
       { status: 500 }
@@ -58,42 +58,42 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     requireAuth()
-    
+
     const body = await req.json()
     const validatedData = createConnectionSchema.parse(body)
-    
+
     const connection = await createPlatformConnection(
       validatedData.platform as Platform,
       validatedData.connection_name,
-      validatedData.credentials,
+      validatedData.credentials as ShopifyCredentials,
       validatedData.configuration
     )
-    
+
     return NextResponse.json({
       success: true,
       data: connection,
     }, { status: 201 })
   } catch (error) {
     console.error('POST /api/platform-connections error:', error)
-    
+
     if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Validation error',
-          details: error.errors 
+          details: error.errors
         },
         { status: 400 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Failed to create platform connection' },
       { status: 500 }

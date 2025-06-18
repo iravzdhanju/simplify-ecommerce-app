@@ -1,25 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/supabase/auth'
-import { 
-  deletePlatformConnection, 
+import {
+  deletePlatformConnection,
   testPlatformConnection,
-  getPlatformConnectionById 
+  getPlatformConnectionById
 } from '@/lib/supabase/platform-connections'
-
-interface RouteParams {
-  params: {
-    id: string
-  }
-}
 
 export async function DELETE(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     requireAuth()
-    
-    const { id } = params
+    const { id } = await params
     if (!id) {
       return NextResponse.json(
         { success: false, error: 'Connection ID is required' },
@@ -28,21 +21,21 @@ export async function DELETE(
     }
 
     await deletePlatformConnection(id)
-    
+
     return NextResponse.json({
       success: true,
       message: 'Connection deleted successfully'
     })
   } catch (error) {
     console.error('DELETE /api/platform-connections/[id] error:', error)
-    
+
     if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Failed to delete connection' },
       { status: 500 }
@@ -52,12 +45,12 @@ export async function DELETE(
 
 export async function GET(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     requireAuth()
-    
-    const { id } = params
+
+    const { id } = await params
     if (!id) {
       return NextResponse.json(
         { success: false, error: 'Connection ID is required' },
@@ -66,28 +59,28 @@ export async function GET(
     }
 
     const connection = await getPlatformConnectionById(id)
-    
+
     if (!connection) {
       return NextResponse.json(
         { success: false, error: 'Connection not found' },
         { status: 404 }
       )
     }
-    
+
     return NextResponse.json({
       success: true,
       data: connection
     })
   } catch (error) {
     console.error('GET /api/platform-connections/[id] error:', error)
-    
+
     if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Failed to fetch connection' },
       { status: 500 }

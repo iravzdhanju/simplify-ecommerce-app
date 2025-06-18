@@ -7,19 +7,45 @@ import type { Product, InsertProduct, UpdateProduct } from '@/types/database'
  */
 export async function getUserProducts(): Promise<Product[]> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   try {
-    // Use service role client to bypass RLS issues
+    // Use service role client so we can freely join across tables without RLS headaches
     const supabase = createServiceRoleClient()
-    
+
+    // 1. Find which platforms still have at least one ACTIVE connection for this user
+    const { data: activeConnections, error: connError } = await supabase
+      .from('platform_connections')
+      .select('platform')
+      .eq('clerk_user_id', clerkUserId)
+      .eq('is_active', true)
+
+    if (connError) {
+      console.warn('Could not fetch active connections, returning demo data:', connError.message)
+      return getDemoProducts()
+    }
+
+    const activePlatforms = (activeConnections || []).map((c: any) => c.platform)
+
+    // If there are no active connections we return an empty list so disconnected stores are hidden
+    if (activePlatforms.length === 0) {
+      return []
+    }
+
+    // 2. Fetch products that have at least one channel mapping tied to an active platform
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select(
+        `*,
+        channel_mappings!inner (
+          platform
+        )`
+      )
       .eq('clerk_user_id', clerkUserId)
+      .in('channel_mappings.platform', activePlatforms)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -27,14 +53,18 @@ export async function getUserProducts(): Promise<Product[]> {
       return getDemoProducts()
     }
 
-    // If no error but no data, it might be because database is empty or not configured
+    // If no data, fall back to demo products as before (for dev environments)
     if (!data || data.length === 0) {
-      console.warn('No products found in database, returning demo data')
-      return getDemoProducts()
+      return []
     }
 
-    console.log(`Found ${data.length} real products in database`)
-    return data
+    // Strip nested channel_mappings and deduplicate by product id
+    const uniqueMap = new Map<string, Product>()
+    data.forEach((p: any) => {
+      const { channel_mappings, ...rest } = p
+      uniqueMap.set(rest.id, rest as Product)
+    })
+    return Array.from(uniqueMap.values())
   } catch (error) {
     console.warn('Database connection failed, returning demo data:', error)
     return getDemoProducts()
@@ -116,14 +146,14 @@ function getDemoProducts(): Product[] {
  */
 export async function getUserProduct(productId: string): Promise<Product | null> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   try {
     const supabase = await createClient()
-    
+
     const { data, error } = await supabase
       .from('products')
       .select('*')
@@ -155,7 +185,7 @@ export async function getUserProduct(productId: string): Promise<Product | null>
  */
 export async function createProduct(productData: Omit<InsertProduct, 'user_id' | 'clerk_user_id'>): Promise<Product> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
@@ -170,7 +200,7 @@ export async function createProduct(productData: Omit<InsertProduct, 'user_id' |
 
   // Use service role client to bypass RLS issues
   const supabase = createServiceRoleClient()
-  
+
   const { data, error } = await supabase
     .from('products')
     .insert({
@@ -193,13 +223,13 @@ export async function createProduct(productData: Omit<InsertProduct, 'user_id' |
  */
 export async function updateProduct(productId: string, productData: UpdateProduct): Promise<Product> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   const supabase = await createClient()
-  
+
   const { data, error } = await supabase
     .from('products')
     .update({
@@ -223,13 +253,13 @@ export async function updateProduct(productId: string, productData: UpdateProduc
  */
 export async function deleteProduct(productId: string): Promise<void> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   const supabase = await createClient()
-  
+
   const { error } = await supabase
     .from('products')
     .delete()
@@ -246,14 +276,14 @@ export async function deleteProduct(productId: string): Promise<void> {
  */
 export async function getProductsWithSyncStatus(): Promise<(Product & { channel_mappings: any[] })[]> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   try {
     const supabase = await createClient()
-    
+
     const { data, error } = await supabase
       .from('products')
       .select(`
@@ -290,13 +320,13 @@ export async function getProductsWithSyncStatus(): Promise<(Product & { channel_
  */
 export async function searchProducts(query: string): Promise<Product[]> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   const supabase = await createClient()
-  
+
   const { data, error } = await supabase
     .from('products')
     .select('*')
@@ -316,13 +346,13 @@ export async function searchProducts(query: string): Promise<Product[]> {
  */
 export async function getProductsByStatus(status: string): Promise<Product[]> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   const supabase = await createClient()
-  
+
   const { data, error } = await supabase
     .from('products')
     .select('*')

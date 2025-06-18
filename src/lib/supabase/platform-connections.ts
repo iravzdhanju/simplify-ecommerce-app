@@ -1,8 +1,8 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getClerkUserId, getAuthenticatedUserId } from './auth'
-import type { 
-  PlatformConnection, 
-  InsertPlatformConnection, 
+import type {
+  PlatformConnection,
+  InsertPlatformConnection,
   UpdatePlatformConnection,
   ShopifyCredentials,
   ShopifyConfiguration,
@@ -49,7 +49,7 @@ export async function getUserPlatformConnections(): Promise<PlatformConnection[]
  */
 export async function getPlatformConnectionsByType(platform: Platform): Promise<PlatformConnection[]> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
@@ -57,7 +57,7 @@ export async function getPlatformConnectionsByType(platform: Platform): Promise<
   try {
     // Use service role client directly since RLS is blocking regular client
     const serviceSupabase = createServiceRoleClient()
-    
+
     const { data, error } = await serviceSupabase
       .from('platform_connections')
       .select('*')
@@ -84,13 +84,13 @@ export async function getPlatformConnectionsByType(platform: Platform): Promise<
  */
 export async function getPlatformConnection(connectionId: string): Promise<PlatformConnection | null> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   const supabase = await createClient()
-  
+
   const { data, error } = await supabase
     .from('platform_connections')
     .select('*')
@@ -115,10 +115,15 @@ export async function createPlatformConnection(
   platform: Platform,
   connectionName: string,
   credentials: ShopifyCredentials | AmazonCredentials,
-  configuration: ShopifyConfiguration | AmazonConfiguration = {}
+  configuration: Partial<ShopifyConfiguration> | Partial<AmazonConfiguration> = {
+    auto_sync: false,
+    sync_inventory: true,
+    sync_prices: true,
+    sync_images: true,
+  }
 ): Promise<PlatformConnection> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
@@ -128,7 +133,7 @@ export async function createPlatformConnection(
 
   // Use service role client to bypass RLS policies for platform connections
   const supabase = createServiceRoleClient()
-  
+
   const { data, error } = await supabase
     .from('platform_connections')
     .insert({
@@ -147,11 +152,11 @@ export async function createPlatformConnection(
     // Handle duplicate key error - connection already exists
     if (error.message.includes('duplicate key')) {
       console.log('Connection already exists, updating last_connected timestamp')
-      
+
       // Try to update the existing connection's last_connected time
       const { data: updateData, error: updateError } = await supabase
         .from('platform_connections')
-        .update({ 
+        .update({
           last_connected: new Date().toISOString(),
           credentials: encryptedCredentials // Update credentials in case they changed
         })
@@ -175,7 +180,7 @@ export async function createPlatformConnection(
 
       return updateData
     }
-    
+
     throw new Error(`Failed to create platform connection: ${error.message}`)
   }
 
@@ -198,14 +203,15 @@ export async function updatePlatformConnection(
   updateData: Partial<UpdatePlatformConnection>
 ): Promise<PlatformConnection> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = await createClient()
-  
-  const { data, error } = await supabase
+  // Use service role client to bypass RLS restrictions
+  const serviceSupabase = createServiceRoleClient()
+
+  const { data, error } = await serviceSupabase
     .from('platform_connections')
     .update({
       ...updateData,
@@ -220,7 +226,7 @@ export async function updatePlatformConnection(
     throw new Error(`Failed to update platform connection: ${error.message}`)
   }
 
-  return data
+  return data as PlatformConnection
 }
 
 /**
@@ -228,14 +234,15 @@ export async function updatePlatformConnection(
  */
 export async function deletePlatformConnection(connectionId: string): Promise<void> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = await createClient()
-  
-  const { error } = await supabase
+  // Use service role client to bypass RLS policies safely
+  const serviceSupabase = createServiceRoleClient()
+
+  const { error } = await serviceSupabase
     .from('platform_connections')
     .delete()
     .eq('id', connectionId)
@@ -255,7 +262,7 @@ export async function testPlatformConnection(connectionId: string): Promise<{
   data?: any
 }> {
   const connection = await getPlatformConnection(connectionId)
-  
+
   if (!connection) {
     return {
       success: false,
@@ -266,7 +273,7 @@ export async function testPlatformConnection(connectionId: string): Promise<{
   try {
     // Decrypt credentials for testing
     const credentials = await decryptCredentials(connection.credentials)
-    
+
     if (connection.platform === Platform.SHOPIFY) {
       const isValid = await testShopifyConnection(credentials as ShopifyCredentials)
       return {
@@ -282,7 +289,7 @@ export async function testPlatformConnection(connectionId: string): Promise<{
         data: { platform: 'amazon' }
       }
     }
-    
+
     return {
       success: false,
       message: 'Unsupported platform'
@@ -369,7 +376,7 @@ async function testShopifyConnection(credentials: ShopifyCredentials): Promise<b
         'Content-Type': 'application/json',
       },
     })
-    
+
     return response.ok
   } catch (error) {
     console.error('Shopify connection test failed:', error)
