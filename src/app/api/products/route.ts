@@ -25,10 +25,10 @@ const createProductSchema = z.object({
 
 export async function GET() {
   try {
-    requireAuth()
-    
+    await requireAuth()
+
     const products = await getUserProducts()
-    
+
     // Transform products to match the expected API format
     const transformedProducts = products.map(product => ({
       id: product.id,
@@ -47,28 +47,25 @@ export async function GET() {
       tags: product.tags || [],
       images: product.images || [],
     }))
-    
+
     return NextResponse.json({
       success: true,
       data: transformedProducts,
     })
   } catch (error) {
     console.error('GET /api/products error:', error)
-    
-    if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
+
+    if (error instanceof Error && (
+      error.message === 'Authentication required' ||
+      error.message === 'Unauthorized: User must be authenticated' ||
+      error.message === 'User not authenticated'
+    )) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
-    if (error instanceof Error && error.message === 'User not authenticated') {
-      return NextResponse.json(
-        { success: false, error: 'User not authenticated' },
-        { status: 401 }
-      )
-    }
-    
+
     return NextResponse.json(
       { success: false, error: 'Failed to fetch products' },
       { status: 500 }
@@ -78,38 +75,42 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    requireAuth()
-    
+    await requireAuth()
+
     const body = await req.json()
     const validatedData = createProductSchema.parse(body)
-    
+
     const product = await createProduct(validatedData)
-    
+
     return NextResponse.json({
       success: true,
       data: product,
     }, { status: 201 })
   } catch (error) {
     console.error('POST /api/products error:', error)
-    
-    if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
+
+    if (error instanceof Error && (
+      error.message === 'Authentication required' ||
+      error.message === 'Unauthorized: User must be authenticated' ||
+      error.message === 'User not authenticated'
+    )) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Validation error',
-          details: error.errors 
+          details: error.errors
         },
         { status: 400 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Failed to create product' },
       { status: 500 }

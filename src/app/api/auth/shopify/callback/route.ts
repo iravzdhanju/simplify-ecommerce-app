@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const lastDash = state.lastIndexOf('-')
     const clerkUserIdFromState = state.substring(0, lastDash)
 
-    const currentUserId = requireAuth()
+    const currentUserId = await requireAuth()
 
     if (clerkUserIdFromState !== currentUserId) {
       return NextResponse.redirect(
@@ -80,8 +80,8 @@ export async function GET(req: NextRequest) {
     // Persist the connection in Supabase so it shows up in the dashboard
     // -------------------------------------------------------------------
     try {
-      const clerkUserId = getClerkUserId()
-      
+      const clerkUserId = await getClerkUserId()
+
       if (!clerkUserId) {
         console.error('No authenticated user found for Shopify connection')
         return NextResponse.redirect(
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
 
       // For demo mode, use the createPlatformConnection function which handles the demo user properly
       const { createPlatformConnection } = await import('@/lib/supabase/platform-connections')
-      
+
       // Fallback connection name: Shopify store name or the shop domain prefix
       const fallbackConnectionName =
         shopData?.shop?.name ?? shop.replace('.myshopify.com', '')

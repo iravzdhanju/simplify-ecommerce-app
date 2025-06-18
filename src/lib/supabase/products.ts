@@ -1,4 +1,4 @@
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { getClerkUserId, getAuthenticatedUserId } from './auth'
 import type { Product, InsertProduct, UpdateProduct } from '@/types/database'
 import { getActiveShopifyConnections } from './platform-connections'
@@ -7,7 +7,7 @@ import { getActiveShopifyConnections } from './platform-connections'
  * Get all products for the authenticated user
  */
 export async function getUserProducts(): Promise<Product[]> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
@@ -138,7 +138,7 @@ function getDemoProducts(): Product[] {
  * Get a single product by ID for the authenticated user
  */
 export async function getUserProduct(productId: string): Promise<Product | null> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
@@ -177,7 +177,7 @@ export async function getUserProduct(productId: string): Promise<Product | null>
  * Create a new product for the authenticated user
  */
 export async function createProduct(productData: Omit<InsertProduct, 'user_id' | 'clerk_user_id'>): Promise<Product> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
@@ -191,8 +191,8 @@ export async function createProduct(productData: Omit<InsertProduct, 'user_id' |
     console.warn('Could not get authenticated user ID for product creation:', error)
   }
 
-  // Use service role client to bypass RLS issues
-  const supabase = createServiceRoleClient()
+  // Use regular client with RLS - policies are configured for Clerk integration
+  const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('products')
@@ -215,7 +215,7 @@ export async function createProduct(productData: Omit<InsertProduct, 'user_id' |
  * Update a product for the authenticated user
  */
 export async function updateProduct(productId: string, productData: UpdateProduct): Promise<Product> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
@@ -245,7 +245,7 @@ export async function updateProduct(productId: string, productData: UpdateProduc
  * Delete a product for the authenticated user
  */
 export async function deleteProduct(productId: string): Promise<void> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
@@ -268,7 +268,7 @@ export async function deleteProduct(productId: string): Promise<void> {
  * Get products with their sync status across platforms
  */
 export async function getProductsWithSyncStatus(): Promise<(Product & { channel_mappings: any[] })[]> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
@@ -312,7 +312,7 @@ export async function getProductsWithSyncStatus(): Promise<(Product & { channel_
  * Search products by title, SKU, or brand
  */
 export async function searchProducts(query: string): Promise<Product[]> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
@@ -338,7 +338,7 @@ export async function searchProducts(query: string): Promise<Product[]> {
  * Get products by status
  */
 export async function getProductsByStatus(status: string): Promise<Product[]> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')

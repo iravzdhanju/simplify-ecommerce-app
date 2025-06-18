@@ -365,7 +365,7 @@ export class ShopifyBulkSync {
   ): Promise<{ successful: number; failed: number; errors: string[] }> {
     const result = { successful: 0, failed: 0, errors: [] as string[] }
 
-    const clerkUserId = getClerkUserId()
+    const clerkUserId = await getClerkUserId()
     if (!clerkUserId) {
       throw new Error('User not authenticated')
     }

@@ -1,4 +1,4 @@
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { getClerkUserId, getAuthenticatedUserId } from './auth'
 import type {
   PlatformConnection,
@@ -15,7 +15,7 @@ import { Platform } from '@/types/database'
  * Get all platform connections for the authenticated user
  */
 export async function getUserPlatformConnections(): Promise<PlatformConnection[]> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
@@ -23,13 +23,12 @@ export async function getUserPlatformConnections(): Promise<PlatformConnection[]
 
   console.log('Getting platform connections for clerk_user_id:', clerkUserId)
 
-  // Use service role client directly since RLS is blocking regular client
+  // Use regular client with RLS - policies are configured for Clerk integration
   try {
-    const serviceSupabase = createServiceRoleClient()
-    const { data: serviceData, error: serviceError } = await serviceSupabase
+    const supabase = await createClient()
+    const { data: serviceData, error: serviceError } = await supabase
       .from('platform_connections')
       .select('*')
-      .eq('clerk_user_id', clerkUserId)
       .order('created_at', { ascending: false })
 
     if (serviceError) {
@@ -48,20 +47,19 @@ export async function getUserPlatformConnections(): Promise<PlatformConnection[]
  * Get platform connections by platform
  */
 export async function getPlatformConnectionsByType(platform: Platform): Promise<PlatformConnection[]> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   try {
-    // Use service role client directly since RLS is blocking regular client
-    const serviceSupabase = createServiceRoleClient()
+    // Use regular client with RLS - policies are configured for Clerk integration
+    const supabase = await createClient()
 
-    const { data, error } = await serviceSupabase
+    const { data, error } = await supabase
       .from('platform_connections')
       .select('*')
-      .eq('clerk_user_id', clerkUserId)
       .eq('platform', platform)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
@@ -83,7 +81,7 @@ export async function getPlatformConnectionsByType(platform: Platform): Promise<
  * Get a specific platform connection
  */
 export async function getPlatformConnection(connectionId: string): Promise<PlatformConnection | null> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
@@ -122,7 +120,7 @@ export async function createPlatformConnection(
     sync_images: true,
   }
 ): Promise<PlatformConnection> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
@@ -131,8 +129,8 @@ export async function createPlatformConnection(
   // TODO: Encrypt credentials before storing
   const encryptedCredentials = await encryptCredentials(credentials)
 
-  // Use service role client to bypass RLS policies for platform connections
-  const supabase = createServiceRoleClient()
+  // Use regular client with RLS - policies are configured for Clerk integration
+  const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('platform_connections')
@@ -160,7 +158,6 @@ export async function createPlatformConnection(
           last_connected: new Date().toISOString(),
           credentials: encryptedCredentials // Update credentials in case they changed
         })
-        .eq('clerk_user_id', clerkUserId)
         .eq('platform', platform)
         .eq('connection_name', connectionName)
         .select()
@@ -202,23 +199,22 @@ export async function updatePlatformConnection(
   connectionId: string,
   updateData: Partial<UpdatePlatformConnection>
 ): Promise<PlatformConnection> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  // Use service role client to bypass RLS restrictions
-  const serviceSupabase = createServiceRoleClient()
+  // Use regular client with RLS - policies are configured for Clerk integration
+  const supabase = await createClient()
 
-  const { data, error } = await serviceSupabase
+  const { data, error } = await supabase
     .from('platform_connections')
     .update({
       ...updateData,
       updated_at: new Date().toISOString(),
     })
     .eq('id', connectionId)
-    .eq('clerk_user_id', clerkUserId)
     .select()
     .single()
 
@@ -233,20 +229,19 @@ export async function updatePlatformConnection(
  * Delete a platform connection
  */
 export async function deletePlatformConnection(connectionId: string): Promise<void> {
-  const clerkUserId = getClerkUserId()
+  const clerkUserId = await getClerkUserId()
 
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  // Use service role client to bypass RLS policies safely
-  const serviceSupabase = createServiceRoleClient()
+  // Use regular client with RLS - policies are configured for Clerk integration
+  const supabase = await createClient()
 
-  const { error } = await serviceSupabase
+  const { error } = await supabase
     .from('platform_connections')
     .delete()
     .eq('id', connectionId)
-    .eq('clerk_user_id', clerkUserId)
 
   if (error) {
     throw new Error(`Failed to delete platform connection: ${error.message}`)

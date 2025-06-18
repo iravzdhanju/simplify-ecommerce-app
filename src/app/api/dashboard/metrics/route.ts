@@ -5,9 +5,9 @@ import { getClerkUserId } from '@/lib/supabase/auth'
 
 export async function GET() {
   try {
-    requireAuth()
+    await requireAuth()
 
-    const userId = getClerkUserId()
+    const userId = await getClerkUserId()
     if (!userId) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
@@ -117,7 +117,7 @@ export async function GET() {
   } catch (error) {
     console.error('Dashboard metrics API error:', error)
 
-    if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
+    if (error instanceof Error && (error.message === 'Authentication required' || error.message === 'Unauthorized: User must be authenticated')) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }

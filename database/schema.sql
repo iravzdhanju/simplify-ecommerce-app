@@ -126,7 +126,7 @@ ALTER TABLE channel_mappings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sync_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies using Clerk user IDs
+-- RLS Policies using Clerk user IDs (Native Integration)
 -- Users policies
 CREATE POLICY "Users can view own profile" ON users
   FOR SELECT USING (clerk_user_id = auth.jwt() ->> 'sub');

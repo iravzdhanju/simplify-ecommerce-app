@@ -30,7 +30,7 @@ const createConnectionSchema = z.object({
 
 export async function GET() {
   try {
-    requireAuth()
+    await requireAuth()
 
     const connections = await getUserPlatformConnections()
 
@@ -41,7 +41,7 @@ export async function GET() {
   } catch (error) {
     console.error('GET /api/platform-connections error:', error)
 
-    if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
+    if (error instanceof Error && (error.message === 'Authentication required' || error.message === 'Unauthorized: User must be authenticated')) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
@@ -57,7 +57,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    requireAuth()
+    await requireAuth()
 
     const body = await req.json()
     const validatedData = createConnectionSchema.parse(body)
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('POST /api/platform-connections error:', error)
 
-    if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
+    if (error instanceof Error && (error.message === 'Authentication required' || error.message === 'Unauthorized: User must be authenticated')) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }

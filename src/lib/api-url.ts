@@ -9,22 +9,39 @@
  * @returns Absolute URL for the API call
  */
 export function getApiUrl(path: string): string {
-  // Remove leading slash if present to avoid double slashes
-  const cleanPath = path.startsWith('/') ? path.slice(1) : path
+  // Ensure path starts with slash
+  const cleanPath = path.startsWith('/') ? path : `/${path}`
 
-  // On the client side, we can use relative URLs
+  // On client side, use relative URLs
   if (typeof window !== 'undefined') {
-    return `/${cleanPath}`
+    return cleanPath
   }
 
-  // On the server side, we need to construct the absolute URL
-  const baseUrl = 
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000'
+  // On server side, always use absolute URLs to avoid URL parsing issues
+  const baseUrl = getBaseUrl()
+  return `${baseUrl}${cleanPath}`
+}
 
-  return `${baseUrl}/${cleanPath}`
+/**
+ * Get the base URL for the application
+ */
+function getBaseUrl(): string {
+  // Client side - use current origin
+  if (typeof window !== 'undefined') {
+    return window.location.origin
+  }
+
+  // Server side - try various environment variables
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '') // Remove trailing slash
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+
+  // Development fallback
+  return 'http://localhost:3000'
 }
 
 /**
@@ -35,5 +52,11 @@ export function getApiUrl(path: string): string {
  */
 export async function apiRequest(path: string, options?: RequestInit): Promise<Response> {
   const url = getApiUrl(path)
+
+  // Debug logging for development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[apiRequest] ${path} -> ${url}`)
+  }
+
   return fetch(url, options)
 }

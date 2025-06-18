@@ -4,9 +4,10 @@ import type { User } from '@/types/database'
 
 /**
  * Get the authenticated user from Clerk and their corresponding Supabase user
+ * Note: With native integration, users may not exist in your users table
+ * until you explicitly create them or use a trigger
  */
 export async function getAuthenticatedUser(): Promise<User | null> {
-
   const { userId } = await auth()
 
   if (!userId) {
@@ -22,7 +23,9 @@ export async function getAuthenticatedUser(): Promise<User | null> {
     .single()
 
   if (error) {
-    console.error('Error fetching user:', error)
+    // User might not exist in your users table with native integration
+    // This is normal - you can choose to create users on-demand or via triggers
+    console.debug('User not found in users table:', userId)
     return null
   }
 
@@ -30,7 +33,7 @@ export async function getAuthenticatedUser(): Promise<User | null> {
 }
 
 /**
- * Get the authenticated user's ID for use in queries
+ * Get the authenticated user's ID (Supabase table ID, not Clerk ID)
  */
 export async function getAuthenticatedUserId(): Promise<string | null> {
   const user = await getAuthenticatedUser()
@@ -40,23 +43,27 @@ export async function getAuthenticatedUserId(): Promise<string | null> {
 /**
  * Get the Clerk user ID from the current session
  */
-export function getClerkUserId(): string | null {
-  // For MVP demo - bypass auth check
-  return 'demo-user-id'
+export async function getClerkUserId(): Promise<string | null> {
+  const { userId } = await auth()
+  return userId
 }
 
 /**
  * Check if user is authenticated
  */
-export function isAuthenticated(): boolean {
-  // For MVP demo - bypass auth check
-  return true
+export async function isAuthenticated(): Promise<boolean> {
+  const { userId } = await auth()
+  return !!userId
 }
 
 /**
  * Require authentication or throw error
  */
-export function requireAuth(): string {
-  // For MVP demo - bypass auth check
-  return 'demo-user-id'
+export async function requireAuth(): Promise<string> {
+  const { userId } = await auth()
+  console.log(`USER IS AUTHENTICATED NOW : ${userId}`)
+  if (!userId) {
+    throw new Error('Authentication required')
+  }
+  return userId
 }
