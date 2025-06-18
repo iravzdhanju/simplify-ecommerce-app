@@ -103,3 +103,15 @@ body {
     @apply !rounded-none !shadow-none;
   }
 }
+
+.theme-tt-default,
+.theme-tt-default-scaled {
+  --font-sans: var(--font-questrial);
+  --primary: #cf4545;
+  --primary-foreground: #ffffff;
+
+  @variant dark {
+    --primary: #cf4545;
+    --primary-foreground: #ffffff;
+  }
+}

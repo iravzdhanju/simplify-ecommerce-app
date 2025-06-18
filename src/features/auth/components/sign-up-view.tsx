@@ -40,12 +40,13 @@ export default function SignUpViewPage({ stars }: { stars: number }) {
           </svg>
           Logo
         </div>
-        <div className='relative z-20 mt-auto'>
+
+        {/* <div className='relative z-20 mt-auto'>
           <blockquote className='space-y-2'>
             <p className='text-lg'>hello </p>
             <footer className='text-sm'>Random Dude</footer>
           </blockquote>
-        </div>
+        </div> */}
       </div>
       <div className='flex h-full items-center justify-center p-4 lg:p-8'>
         <div className='flex w-full max-w-md flex-col items-center justify-center space-y-6'>

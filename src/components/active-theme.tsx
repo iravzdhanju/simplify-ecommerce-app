@@ -9,7 +9,7 @@ import {
 } from 'react';
 
 const COOKIE_NAME = 'active_theme';
-const DEFAULT_THEME = 'default';
+const DEFAULT_THEME = 'tt-default';
 
 function setThemeCookie(theme: string) {
   if (typeof window === 'undefined') return;
@@ -47,6 +47,11 @@ export function ActiveThemeProvider({
     if (activeTheme.endsWith('-scaled')) {
       document.body.classList.add('theme-scaled');
     }
+
+    document.documentElement.style.setProperty(
+      '--font-sans',
+      `var(--font-questrial)`
+    );
   }, [activeTheme]);
 
   return (
