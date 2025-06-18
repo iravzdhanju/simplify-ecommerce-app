@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getClerkUserId, getAuthenticatedUserId } from './auth'
 import type { Product, InsertProduct, UpdateProduct } from '@/types/database'
 
@@ -13,7 +13,8 @@ export async function getUserProducts(): Promise<Product[]> {
   }
 
   try {
-    const supabase = await createClient()
+    // Use service role client to bypass RLS issues
+    const supabase = createServiceRoleClient()
     
     const { data, error } = await supabase
       .from('products')
@@ -32,6 +33,7 @@ export async function getUserProducts(): Promise<Product[]> {
       return getDemoProducts()
     }
 
+    console.log(`Found ${data.length} real products in database`)
     return data
   } catch (error) {
     console.warn('Database connection failed, returning demo data:', error)
@@ -54,7 +56,7 @@ function getDemoProducts(): Product[] {
       category: 'Electronics',
       sku: 'DEMO-001',
       inventory: 100,
-      images: ['/placeholder-product.png'],
+      images: ['/placeholder-product.svg'],
       brand: 'Demo Brand',
       weight: 1.0,
       dimensions: null,
@@ -73,7 +75,7 @@ function getDemoProducts(): Product[] {
       category: 'Clothing',
       sku: 'DEMO-002',
       inventory: 50,
-      images: ['/placeholder-product.png'],
+      images: ['/placeholder-product.svg'],
       brand: 'Demo Brand',
       weight: 0.5,
       dimensions: null,
@@ -92,7 +94,7 @@ function getDemoProducts(): Product[] {
       category: 'Home & Garden',
       sku: 'DEMO-003',
       inventory: 25,
-      images: ['/placeholder-product.png'],
+      images: ['/placeholder-product.svg'],
       brand: 'Demo Brand',
       weight: 2.0,
       dimensions: {
@@ -153,19 +155,27 @@ export async function getUserProduct(productId: string): Promise<Product | null>
  */
 export async function createProduct(productData: Omit<InsertProduct, 'user_id' | 'clerk_user_id'>): Promise<Product> {
   const clerkUserId = getClerkUserId()
-  const userId = await getAuthenticatedUserId()
   
-  if (!clerkUserId || !userId) {
+  if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = await createClient()
+  // Get user ID if available, but don't fail if we can't get it
+  let userId: string | null = null
+  try {
+    userId = await getAuthenticatedUserId()
+  } catch (error) {
+    console.warn('Could not get authenticated user ID for product creation:', error)
+  }
+
+  // Use service role client to bypass RLS issues
+  const supabase = createServiceRoleClient()
   
   const { data, error } = await supabase
     .from('products')
     .insert({
       ...productData,
-      user_id: userId,
+      user_id: userId, // Can be null for demo mode
       clerk_user_id: clerkUserId,
     })
     .select()

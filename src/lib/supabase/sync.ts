@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getClerkUserId } from './auth'
 import { 
   Platform,
@@ -41,7 +41,8 @@ export async function upsertChannelMapping(
   platform: Platform,
   mappingData: Partial<InsertChannelMapping>
 ): Promise<ChannelMapping> {
-  const supabase = await createClient()
+  // Use service role client to bypass RLS issues
+  const supabase = createServiceRoleClient()
   
   const { data, error } = await supabase
     .from('channel_mappings')

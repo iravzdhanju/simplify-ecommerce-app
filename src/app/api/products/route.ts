@@ -36,7 +36,7 @@ export async function GET() {
       description: product.description || '',
       price: product.price || 0,
       category: product.category || 'Uncategorized',
-      photo_url: product.images?.[0] || '/placeholder-product.png',
+      photo_url: product.images?.[0] || '/placeholder-product.svg',
       created_at: product.created_at,
       updated_at: product.updated_at,
       marketplace: ['Shopify'], // Default marketplace

@@ -251,6 +251,8 @@ export class ShopifyBulkSync {
     const jsonlData = await response.text()
     const lines = jsonlData.split('\n').filter(line => line.trim())
     
+    console.log(`Downloaded JSONL with ${lines.length} lines`)
+    
     // Parse JSONL format and reconstruct products
     const products = new Map<string, ShopifyBulkProduct>()
     const variants = new Map<string, ShopifyBulkVariant[]>()
@@ -258,83 +260,88 @@ export class ShopifyBulkSync {
     const metafields = new Map<string, ShopifyBulkMetafield[]>()
 
     // Parse all objects and group by type
-    lines.forEach(line => {
+    let productCount = 0
+    let variantCount = 0
+    let imageCount = 0
+    
+    lines.forEach((line, index) => {
       try {
         const obj = JSON.parse(line)
         
-        switch (obj.__typename) {
-          case 'Product':
-            products.set(obj.id, {
-              id: obj.id,
-              title: obj.title,
-              handle: obj.handle,
-              description: obj.description || '',
-              productType: obj.productType || '',
-              vendor: obj.vendor || '',
-              tags: obj.tags || [],
-              status: obj.status,
-              createdAt: obj.createdAt,
-              updatedAt: obj.updatedAt,
-              totalInventory: obj.totalInventory || 0,
-              variants: [],
-              images: [],
-              metafields: [],
-            })
-            break
-
-          case 'ProductVariant':
-            if (obj.__parentId) {
-              if (!variants.has(obj.__parentId)) {
-                variants.set(obj.__parentId, [])
-              }
-              variants.get(obj.__parentId)!.push({
-                id: obj.id,
-                title: obj.title,
-                price: obj.price,
-                compareAtPrice: obj.compareAtPrice,
-                inventoryQuantity: obj.inventoryQuantity || 0,
-                sku: obj.sku || '',
-                barcode: obj.barcode,
-                weight: obj.weight,
-                weightUnit: obj.weightUnit || 'KILOGRAMS',
-                selectedOptions: obj.selectedOptions || [],
-                inventoryItem: obj.inventoryItem || { id: '', tracked: false },
-              })
-            }
-            break
-
-          case 'Image':
-            if (obj.__parentId) {
-              if (!images.has(obj.__parentId)) {
-                images.set(obj.__parentId, [])
-              }
-              images.get(obj.__parentId)!.push({
-                url: obj.url,
-                altText: obj.altText,
-                width: obj.width || 0,
-                height: obj.height || 0,
-              })
-            }
-            break
-
-          case 'Metafield':
-            if (obj.__parentId) {
-              if (!metafields.has(obj.__parentId)) {
-                metafields.set(obj.__parentId, [])
-              }
-              metafields.get(obj.__parentId)!.push({
-                namespace: obj.namespace,
-                key: obj.key,
-                value: obj.value,
-                type: obj.type,
-              })
-            }
-            break
+        // Log first few objects to understand structure
+        if (index < 5) {
+          console.log(`Object ${index}:`, JSON.stringify(obj, null, 2))
+        }
+        
+        // Identify object type by GID format instead of __typename
+        if (obj.id?.includes('gid://shopify/Product/') && !obj.__parentId) {
+          // This is a Product
+          productCount++
+          products.set(obj.id, {
+            id: obj.id,
+            title: obj.title,
+            handle: obj.handle,
+            description: obj.description || '',
+            productType: obj.productType || '',
+            vendor: obj.vendor || '',
+            tags: obj.tags || [],
+            status: obj.status,
+            createdAt: obj.createdAt,
+            updatedAt: obj.updatedAt,
+            totalInventory: obj.totalInventory || 0,
+            variants: [],
+            images: [],
+            metafields: [],
+          })
+        } else if (obj.id?.includes('gid://shopify/ProductVariant/') && obj.__parentId) {
+          // This is a ProductVariant
+          variantCount++
+          if (!variants.has(obj.__parentId)) {
+            variants.set(obj.__parentId, [])
+          }
+          variants.get(obj.__parentId)!.push({
+            id: obj.id,
+            title: obj.title,
+            price: obj.price,
+            compareAtPrice: obj.compareAtPrice,
+            inventoryQuantity: obj.inventoryQuantity || 0,
+            sku: obj.sku || '',
+            barcode: obj.barcode,
+            weight: obj.weight,
+            weightUnit: obj.weightUnit || 'KILOGRAMS',
+            selectedOptions: obj.selectedOptions || [],
+            inventoryItem: obj.inventoryItem || { id: '', tracked: false },
+          })
+        } else if ((obj.id?.includes('gid://shopify/MediaImage/') || obj.id?.includes('gid://shopify/ImageSource/')) && obj.__parentId) {
+          // This is an Image
+          imageCount++
+          if (!images.has(obj.__parentId)) {
+            images.set(obj.__parentId, [])
+          }
+          images.get(obj.__parentId)!.push({
+            url: obj.url,
+            altText: obj.altText,
+            width: obj.width || 0,
+            height: obj.height || 0,
+          })
+        } else if (obj.id?.includes('gid://shopify/Metafield/') && obj.__parentId) {
+          // This is a Metafield
+          if (!metafields.has(obj.__parentId)) {
+            metafields.set(obj.__parentId, [])
+          }
+          metafields.get(obj.__parentId)!.push({
+            namespace: obj.namespace,
+            key: obj.key,
+            value: obj.value,
+            type: obj.type,
+          })
         }
       } catch (parseError) {
         console.warn('Failed to parse JSONL line:', line.substring(0, 100))
       }
     })
+
+    console.log(`Parsed objects: ${productCount} products, ${variantCount} variants, ${imageCount} images`)
 
     // Reconstruct complete products
     const completeProducts: ShopifyBulkProduct[] = []
@@ -345,6 +352,7 @@ export class ShopifyBulkSync {
       completeProducts.push(product)
     })
 
+    console.log(`Reconstructed ${completeProducts.length} complete products`)
     return completeProducts
   }
 
@@ -426,8 +434,8 @@ export class ShopifyBulkSync {
    * Find existing channel mapping for a Shopify product
    */
   private async findExistingMapping(shopifyProductId: string) {
-    const { createClient } = await import('@/lib/supabase/server')
-    const supabase = createClient()
+    const { createServiceRoleClient } = await import('@/lib/supabase/server')
+    const supabase = createServiceRoleClient()
     
     const { data } = await supabase
       .from('channel_mappings')

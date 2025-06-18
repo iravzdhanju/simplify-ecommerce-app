@@ -526,6 +526,7 @@ export const BULK_PRODUCTS_QUERY = `
           images {
             edges {
               node {
+                id
                 url
                 altText
                 width
