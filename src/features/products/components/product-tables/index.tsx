@@ -1,11 +1,13 @@
 'use client';
 
 import { DataTable } from '@/components/ui/table/data-table';
+import { useDataTableStore } from '@/stores/data-table-store';
 
 import { useDataTable } from '@/hooks/use-data-table';
 
 import { ColumnDef } from '@tanstack/react-table';
 import { parseAsInteger, useQueryState } from 'nuqs';
+import React from 'react';
 
 interface ProductTableParams<TData, TValue> {
   data: TData[];
@@ -26,14 +28,16 @@ export function ProductTable<TData, TValue>({
     data, // product data
     columns, // product columns
     pageCount: pageCount,
-    shallow: false, //Setting to false triggers a network request with the updated querystring.
-    debounceMs: 500
+    shallow: false,
+    debounceMs: 0,
+    throttleMs: 0
   });
 
-  return (
-    <div className='flex flex-1 flex-col space-y-4'>
-      {/* Table Content Only - Toolbar is handled separately */}
-      <DataTable table={table} />
-    </div>
-  );
+  // Store table instance for external toolbar.
+  const setTable = useDataTableStore((s) => s.setTable);
+  React.useEffect(() => {
+    setTable(table);
+  }, [table, setTable]);
+
+  return <DataTable table={table} />;
 }

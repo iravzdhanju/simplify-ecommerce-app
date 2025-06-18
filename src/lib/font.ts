@@ -4,7 +4,8 @@ import {
   Instrument_Sans,
   Inter,
   Mulish,
-  Noto_Sans_Mono
+  Noto_Sans_Mono,
+  Questrial
 } from 'next/font/google';
 
 import { cn } from '@/lib/utils';
@@ -39,11 +40,18 @@ const fontInter = Inter({
   variable: '--font-inter'
 });
 
+const fontQuestrial = Questrial({
+  weight: ['400'],
+  subsets: ['latin'],
+  variable: '--font-questrial'
+});
+
 export const fontVariables = cn(
   fontSans.variable,
   fontMono.variable,
   fontInstrument.variable,
   fontNotoMono.variable,
   fontMullish.variable,
-  fontInter.variable
+  fontInter.variable,
+  fontQuestrial.variable
 );

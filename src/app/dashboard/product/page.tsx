@@ -2,20 +2,19 @@ import PageContainer from '@/components/layout/page-container';
 import { buttonVariants } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { Separator } from '@/components/ui/separator';
-import {
-  DataTableToolbarSkeleton,
-  DataTableContentSkeleton,
-  DataTablePaginationSkeleton
-} from '@/components/ui/table/data-table-skeleton';
-import ProductListingPage, {
-  ProductListingToolbar
-} from '@/features/products/components/product-listing';
+import { DataTableSkeleton } from '@/components/ui/table/data-table-skeleton';
+import ProductListingPage from '@/features/products/components/product-listing';
 import { searchParamsCache, serialize } from '@/lib/searchparams';
 import { cn } from '@/lib/utils';
 import { IconPlus } from '@tabler/icons-react';
 import Link from 'next/link';
 import { SearchParams } from 'nuqs/server';
 import { Suspense } from 'react';
+import dynamic from 'next/dynamic';
+
+const ConnectedDataTableToolbar = dynamic(
+  () => import('@/components/ui/table/connected-data-table-toolbar')
+);
 
 export const metadata = {
   title: 'Dashboard: Products'
@@ -49,33 +48,20 @@ export default async function Page(props: pageProps) {
           </Link>
         </div>
         <Separator />
-
-        <div className='flex flex-1 flex-col space-y-4'>
-          {/* Real Toolbar - Never refreshes */}
-          <Suspense
-            fallback={
-              <DataTableToolbarSkeleton
-                filterCount={3}
-                withViewOptions={true}
-              />
-            }
-          >
-            <ProductListingToolbar />
-          </Suspense>
-
-          {/* Dynamic Table Content - Refreshes on filter changes */}
-          <Suspense
-            key={key}
-            fallback={
-              <div className='flex flex-1 flex-col space-y-4'>
-                <DataTableContentSkeleton columnCount={7} rowCount={8} />
-                <DataTablePaginationSkeleton />
-              </div>
-            }
-          >
-            <ProductListingPage />
-          </Suspense>
-        </div>
+        <ConnectedDataTableToolbar />
+        <Suspense
+          key={key}
+          fallback={
+            <DataTableSkeleton
+              columnCount={7}
+              rowCount={8}
+              filterCount={0}
+              withViewOptions={false}
+            />
+          }
+        >
+          <ProductListingPage />
+        </Suspense>
       </div>
     </PageContainer>
   );

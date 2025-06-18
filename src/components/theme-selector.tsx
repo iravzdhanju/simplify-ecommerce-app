@@ -12,8 +12,13 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import { useEffect } from 'react';
 
 const DEFAULT_THEMES = [
+  {
+    name: 'TT Default',
+    value: 'tt-default'
+  },
   {
     name: 'Default',
     value: 'default'
@@ -34,6 +39,10 @@ const DEFAULT_THEMES = [
 
 const SCALED_THEMES = [
   {
+    name: 'TT Default',
+    value: 'tt-default-scaled'
+  },
+  {
     name: 'Default',
     value: 'default-scaled'
   },
@@ -53,21 +62,33 @@ const MONO_THEMES = [
 export function ThemeSelector() {
   const { activeTheme, setActiveTheme } = useThemeConfig();
 
+  // Ensure the theme is properly initialized
+  useEffect(() => {
+    if (!activeTheme) {
+      setActiveTheme('tt-default');
+    }
+  }, [activeTheme, setActiveTheme]);
+
   return (
     <div className='flex items-center gap-2'>
       <Label htmlFor='theme-selector' className='sr-only'>
         Theme
       </Label>
-      <Select value={activeTheme} onValueChange={setActiveTheme}>
+      <Select
+        value={activeTheme || 'tt-default'}
+        onValueChange={setActiveTheme}
+      >
         <SelectTrigger
           id='theme-selector'
-          className='justify-start *:data-[slot=select-value]:w-12'
+          className='flex w-full items-center justify-between gap-2'
         >
-          <span className='text-muted-foreground hidden sm:block'>
-            Select a theme:
-          </span>
-          <span className='text-muted-foreground block sm:hidden'>Theme</span>
-          <SelectValue placeholder='Select a theme' />
+          <div className='flex items-center gap-2'>
+            <span className='text-muted-foreground hidden sm:block'>
+              Theme:
+            </span>
+            <span className='text-muted-foreground block sm:hidden'>Theme</span>
+            <SelectValue />
+          </div>
         </SelectTrigger>
         <SelectContent align='end'>
           <SelectGroup>

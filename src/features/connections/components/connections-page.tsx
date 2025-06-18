@@ -40,6 +40,9 @@ interface ConnectionStats {
 
 export default function ConnectionsPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [disconnectedConnectionIds, setDisconnectedConnectionIds] = useState<
+    Set<string>
+  >(new Set());
   const [stats, setStats] = useState<ConnectionStats>({
     total: 0,
     active: 0,
@@ -58,8 +61,12 @@ export default function ConnectionsPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          setConnections(data.data);
-          updateStats(data.data);
+          // Filter out disconnected connections
+          const activeConnections = data.data.filter(
+            (conn: Connection) => !disconnectedConnectionIds.has(conn.id)
+          );
+          setConnections(activeConnections);
+          updateStats(activeConnections);
         }
       }
     } catch (error) {
@@ -67,6 +74,18 @@ export default function ConnectionsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleConnectionDisconnected = (connectionId: string) => {
+    // Add to disconnected list
+    setDisconnectedConnectionIds((prev) => new Set(prev).add(connectionId));
+    // Remove from current connections
+    setConnections((prev) => prev.filter((conn) => conn.id !== connectionId));
+    // Update stats
+    const updatedConnections = connections.filter(
+      (conn) => conn.id !== connectionId
+    );
+    updateStats(updatedConnections);
   };
 
   const updateStats = (connections: Connection[]) => {
@@ -183,10 +202,13 @@ export default function ConnectionsPage() {
         </TabsList>
 
         <TabsContent value='shopify'>
-          <ShopifyConnectionCard
-            connections={shopifyConnections}
-            onConnectionAdded={fetchConnections}
-          />
+          <div className='space-y-8'>
+            <ShopifyConnectionCard
+              connections={shopifyConnections}
+              onConnectionAdded={fetchConnections}
+              onConnectionDisconnected={handleConnectionDisconnected}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value='amazon'>
@@ -204,7 +226,7 @@ export default function ConnectionsPage() {
                   Amazon Integration Coming Soon
                 </h3>
                 <p className='text-muted-foreground'>
-                  We&apos;re working on Amazon SP-API integration to sync your
+                  We're working on Amazon SP-API integration to sync your
                   products with Amazon marketplaces.
                 </p>
               </div>

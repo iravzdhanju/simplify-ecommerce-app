@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/supabase/auth'
+import { requireAuth, getClerkUserId, getAuthenticatedUserId } from '@/lib/supabase/auth'
+import { createClient } from '@/lib/supabase/server'
+import { Platform } from '@/types/database'
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,11 +24,13 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // Verify state matches expected format (clerkUserId-timestamp)
-    const [clerkUserId] = state.split('-')
+    // Verify state matches expected format (clerkUserId-timestamp).  Because the clerkUserId itself may contain hyphens, we need to split from the right-hand side.
+    const lastDash = state.lastIndexOf('-')
+    const clerkUserIdFromState = state.substring(0, lastDash)
+
     const currentUserId = requireAuth()
-    
-    if (clerkUserId !== currentUserId) {
+
+    if (clerkUserIdFromState !== currentUserId) {
       return NextResponse.redirect(
         `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/connections?error=invalid_state`
       )
@@ -72,13 +76,39 @@ export async function GET(req: NextRequest) {
 
     const shopData = await testResponse.json()
 
-    // For MVP demo - log the successful connection instead of saving to database
-    console.log('Shopify connection successful:', {
-      shop,
-      shopName: shopData.shop?.name,
-      scope,
-      access_token: access_token.substring(0, 10) + '...' // Only log partial token for security
-    })
+    // -------------------------------------------------------------------
+    // Persist the connection in Supabase so it shows up in the dashboard
+    // -------------------------------------------------------------------
+    try {
+      const supabase = await createClient()
+
+      const clerkUserId = getClerkUserId()
+      const userId = await getAuthenticatedUserId()
+
+      // Fallback connection name: Shopify store name or the shop domain prefix
+      const fallbackConnectionName =
+        shopData?.shop?.name ?? shop.replace('.myshopify.com', '')
+
+      const { error: insertError } = await supabase.from('platform_connections').insert({
+        user_id: userId,
+        clerk_user_id: clerkUserId,
+        platform: Platform.SHOPIFY,
+        connection_name: fallbackConnectionName,
+        credentials: {
+          access_token,
+          shop_domain: shop,
+          scope
+        },
+        configuration: {},
+        last_connected: new Date().toISOString()
+      })
+
+      if (insertError) {
+        console.error('Failed to save Shopify connection:', insertError)
+      }
+    } catch (dbError) {
+      console.error('Unexpected error while saving Shopify connection:', dbError)
+    }
 
     // Redirect back to connections page with success
     return NextResponse.redirect(
