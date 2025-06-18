@@ -3,8 +3,39 @@ import { fakeProducts } from '@/constants/mock-api';
 import { searchParamsCache } from '@/lib/searchparams';
 import { ProductTable } from './product-tables';
 import { columns } from './product-tables/columns';
+import { ProductTableToolbarWrapper } from './product-toolbar-wrapper';
 
 type ProductListingPage = {};
+
+export async function ProductListingToolbar({}: ProductListingPage) {
+  // Get the same data as the table
+  const page = searchParamsCache.get('page');
+  const search = searchParamsCache.get('name');
+  const pageLimit = searchParamsCache.get('perPage');
+  const categories = searchParamsCache.get('category');
+  const marketplaces = searchParamsCache.get('marketplace');
+
+  const filters = {
+    page,
+    limit: pageLimit,
+    ...(search && { search }),
+    ...(categories && { categories: categories }),
+    ...(marketplaces && { marketplaces: marketplaces })
+  };
+
+  const data = await fakeProducts.getProducts(filters);
+  const totalProducts = data.total_products;
+  const products: Product[] = data.products;
+
+  // We need to create the table instance to use with the toolbar
+  return (
+    <ProductTableToolbarWrapper
+      data={products}
+      totalItems={totalProducts}
+      columns={columns}
+    />
+  );
+}
 
 export default async function ProductListingPage({}: ProductListingPage) {
   // Showcasing the use of search params cache in nested RSCs
