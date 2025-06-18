@@ -1,45 +1,40 @@
 import { createClient } from '@/lib/supabase/server'
 import { getClerkUserId, getAuthenticatedUserId } from './auth'
-import type { 
-  PlatformConnection, 
-  InsertPlatformConnection, 
+import type {
+  PlatformConnection,
+  InsertPlatformConnection,
   UpdatePlatformConnection,
-  Platform,
   ShopifyCredentials,
   ShopifyConfiguration,
   AmazonCredentials,
   AmazonConfiguration
 } from '@/types/database'
+import { Platform } from '@/types/database'
 
 /**
  * Get all platform connections for the authenticated user
  */
 export async function getUserPlatformConnections(): Promise<PlatformConnection[]> {
-  // For MVP demo - return mock data instead of database
-  return [
-    {
-      id: 'demo-connection-1',
-      user_id: 'demo-user-id',
-      clerk_user_id: 'demo-user-id',
-      platform: 'shopify' as Platform,
-      connection_name: 'Demo Shopify Store',
-      credentials: {
-        shop_domain: 'demo-store.myshopify.com',
-        access_token: 'demo-token',
-        scope: 'read_products,write_products'
-      },
-      configuration: {
-        auto_sync: true,
-        sync_inventory: true,
-        sync_prices: true,
-        sync_images: true
-      },
-      is_active: true,
-      last_connected: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-  ]
+  const clerkUserId = getClerkUserId()
+
+  if (!clerkUserId) {
+    throw new Error('User not authenticated')
+  }
+
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('platform_connections')
+    .select('*')
+    .eq('clerk_user_id', clerkUserId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Failed to fetch platform connections:', error)
+    throw new Error(`Failed to fetch platform connections: ${error.message}`)
+  }
+
+  return data || []
 }
 
 /**
@@ -47,13 +42,13 @@ export async function getUserPlatformConnections(): Promise<PlatformConnection[]
  */
 export async function getPlatformConnectionsByType(platform: Platform): Promise<PlatformConnection[]> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = createClient()
-  
+  const supabase = await createClient()
+
   const { data, error } = await supabase
     .from('platform_connections')
     .select('*')
@@ -74,13 +69,13 @@ export async function getPlatformConnectionsByType(platform: Platform): Promise<
  */
 export async function getPlatformConnection(connectionId: string): Promise<PlatformConnection | null> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = createClient()
-  
+  const supabase = await createClient()
+
   const { data, error } = await supabase
     .from('platform_connections')
     .select('*')
@@ -105,11 +100,11 @@ export async function createPlatformConnection(
   platform: Platform,
   connectionName: string,
   credentials: ShopifyCredentials | AmazonCredentials,
-  configuration: ShopifyConfiguration | AmazonConfiguration = {}
+  configuration?: ShopifyConfiguration | AmazonConfiguration
 ): Promise<PlatformConnection> {
   const clerkUserId = getClerkUserId()
   const userId = await getAuthenticatedUserId()
-  
+
   if (!clerkUserId || !userId) {
     throw new Error('User not authenticated')
   }
@@ -117,8 +112,8 @@ export async function createPlatformConnection(
   // TODO: Encrypt credentials before storing
   const encryptedCredentials = await encryptCredentials(credentials)
 
-  const supabase = createClient()
-  
+  const supabase = await createClient()
+
   const { data, error } = await supabase
     .from('platform_connections')
     .insert({
@@ -127,7 +122,7 @@ export async function createPlatformConnection(
       platform,
       connection_name: connectionName,
       credentials: encryptedCredentials,
-      configuration,
+      configuration: configuration || {},
       last_connected: new Date().toISOString(),
     })
     .select()
@@ -148,13 +143,13 @@ export async function updatePlatformConnection(
   updateData: Partial<UpdatePlatformConnection>
 ): Promise<PlatformConnection> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = createClient()
-  
+  const supabase = await createClient()
+
   const { data, error } = await supabase
     .from('platform_connections')
     .update({
@@ -178,13 +173,13 @@ export async function updatePlatformConnection(
  */
 export async function deletePlatformConnection(connectionId: string): Promise<void> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
-  const supabase = createClient()
-  
+  const supabase = await createClient()
+
   const { error } = await supabase
     .from('platform_connections')
     .delete()
@@ -205,7 +200,7 @@ export async function testPlatformConnection(connectionId: string): Promise<{
   data?: any
 }> {
   const connection = await getPlatformConnection(connectionId)
-  
+
   if (!connection) {
     return {
       success: false,
@@ -216,7 +211,7 @@ export async function testPlatformConnection(connectionId: string): Promise<{
   try {
     // Decrypt credentials for testing
     const credentials = await decryptCredentials(connection.credentials)
-    
+
     if (connection.platform === Platform.SHOPIFY) {
       const isValid = await testShopifyConnection(credentials as ShopifyCredentials)
       return {
@@ -232,7 +227,7 @@ export async function testPlatformConnection(connectionId: string): Promise<{
         data: { platform: 'amazon' }
       }
     }
-    
+
     return {
       success: false,
       message: 'Unsupported platform'
@@ -319,7 +314,7 @@ async function testShopifyConnection(credentials: ShopifyCredentials): Promise<b
         'Content-Type': 'application/json',
       },
     })
-    
+
     return response.ok
   } catch (error) {
     console.error('Shopify connection test failed:', error)
