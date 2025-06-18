@@ -96,6 +96,11 @@ export class ShopifyBulkSync {
     try {
       console.log('Starting bulk product import from Shopify...')
       
+      // Check if we have valid credentials first
+      if (!this.credentials.access_token || !this.credentials.shop_domain) {
+        throw new Error('Invalid Shopify credentials: Missing access token or shop domain')
+      }
+      
       // Start bulk operation
       const bulkOperation = await this.client.executeBulkOperation(BULK_PRODUCTS_QUERY)
       
@@ -400,17 +405,17 @@ export class ShopifyBulkSync {
 
     const results = await Promise.allSettled(promises)
     
-    results.forEach((result) => {
-      if (result.status === 'fulfilled') {
-        if (result.value.success) {
+    results.forEach((promiseResult) => {
+      if (promiseResult.status === 'fulfilled') {
+        if (promiseResult.value.success) {
           result.successful++
         } else {
           result.failed++
-          result.errors.push(`Product ${result.value.productId}: ${result.value.error}`)
+          result.errors.push(`Product ${promiseResult.value.productId}: ${promiseResult.value.error}`)
         }
       } else {
         result.failed++
-        result.errors.push(result.reason.message || 'Promise rejected')
+        result.errors.push(promiseResult.reason?.message || 'Promise rejected')
       }
     })
 

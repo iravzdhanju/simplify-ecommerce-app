@@ -29,9 +29,28 @@ export async function GET() {
     
     const products = await getUserProducts()
     
+    // Transform products to match the expected API format
+    const transformedProducts = products.map(product => ({
+      id: product.id,
+      name: product.title,
+      description: product.description || '',
+      price: product.price || 0,
+      category: product.category || 'Uncategorized',
+      photo_url: product.images?.[0] || '/placeholder-product.png',
+      created_at: product.created_at,
+      updated_at: product.updated_at,
+      marketplace: ['Shopify'], // Default marketplace
+      sku: product.sku,
+      brand: product.brand,
+      inventory: product.inventory,
+      status: product.status,
+      tags: product.tags || [],
+      images: product.images || [],
+    }))
+    
     return NextResponse.json({
       success: true,
-      data: products,
+      data: transformedProducts,
     })
   } catch (error) {
     console.error('GET /api/products error:', error)
@@ -39,6 +58,13 @@ export async function GET() {
     if (error instanceof Error && error.message === 'Unauthorized: User must be authenticated') {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+    
+    if (error instanceof Error && error.message === 'User not authenticated') {
+      return NextResponse.json(
+        { success: false, error: 'User not authenticated' },
         { status: 401 }
       )
     }

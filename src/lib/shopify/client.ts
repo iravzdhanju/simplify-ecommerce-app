@@ -64,7 +64,8 @@ export class ShopifyGraphQLClient {
       )
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorText = await response.text().catch(() => 'Unable to read error response')
+        throw new Error(`Shopify API error (${response.status}): ${errorText}`)
       }
 
       const data = await response.json()
@@ -198,7 +199,7 @@ export class ShopifyGraphQLClient {
   }
 
   private async handleThrottleError(cost: number): Promise<void> {
-    const waitTime = Math.ceil(cost / this.rateLimiter.pointsPerSecond) * 1000
+    const waitTime = Math.ceil(cost / this.rateLimiter.rateLimit) * 1000
     console.warn(`Rate limited, waiting ${waitTime}ms`)
     await new Promise(resolve => setTimeout(resolve, waitTime))
   }
@@ -234,9 +235,12 @@ class ShopifyRateLimiter {
     this.currentCost += estimatedCost
   }
 
-  updateActualCost(actualCost: number): void {
+  updateActualCost(costData: any): void {
     // Adjust based on actual vs estimated cost
-    this.currentCost = Math.max(0, this.currentCost + actualCost.actualQueryCost - actualCost.estimatedCost || 0)
+    if (costData && typeof costData === 'object' && 'actualQueryCost' in costData) {
+      const adjustment = costData.actualQueryCost - (costData.estimatedCost || 0)
+      this.currentCost = Math.max(0, this.currentCost + adjustment)
+    }
   }
 
   private refillBucket(): void {
@@ -248,7 +252,7 @@ class ShopifyRateLimiter {
     this.lastRefill = now
   }
 
-  get pointsPerSecond(): number {
+  get rateLimit(): number {
     return this.pointsPerSecond
   }
 }

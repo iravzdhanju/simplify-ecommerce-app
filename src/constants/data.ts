@@ -36,11 +36,17 @@ export const navItems: NavItem[] = [
   },
   {
     title: 'Sync',
-    url: '#',
+    url: '/dashboard/sync',
     icon: 'arrowRightLeft',
     shortcut: ['s', 's'],
     isActive: false,
     items: [
+      {
+        title: 'Sync Dashboard',
+        url: '/dashboard/sync',
+        icon: 'activity',
+        shortcut: ['s', 'd']
+      },
       {
         title: 'Shopify Sync',
         url: '/dashboard/sync/shopify',

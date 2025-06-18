@@ -80,34 +80,46 @@ export async function GET(req: NextRequest) {
     // Persist the connection in Supabase so it shows up in the dashboard
     // -------------------------------------------------------------------
     try {
-      const supabase = await createClient()
-
       const clerkUserId = getClerkUserId()
-      const userId = await getAuthenticatedUserId()
+      
+      if (!clerkUserId) {
+        console.error('No authenticated user found for Shopify connection')
+        return NextResponse.redirect(
+          `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/connections?error=auth_required`
+        )
+      }
 
+      // For demo mode, use the createPlatformConnection function which handles the demo user properly
+      const { createPlatformConnection } = await import('@/lib/supabase/platform-connections')
+      
       // Fallback connection name: Shopify store name or the shop domain prefix
       const fallbackConnectionName =
         shopData?.shop?.name ?? shop.replace('.myshopify.com', '')
 
-      const { error: insertError } = await supabase.from('platform_connections').insert({
-        user_id: userId,
-        clerk_user_id: clerkUserId,
-        platform: Platform.SHOPIFY,
-        connection_name: fallbackConnectionName,
-        credentials: {
+      await createPlatformConnection(
+        Platform.SHOPIFY,
+        fallbackConnectionName,
+        {
           access_token,
           shop_domain: shop,
           scope
         },
-        configuration: {},
-        last_connected: new Date().toISOString()
-      })
+        {
+          auto_sync: true,
+          sync_inventory: true,
+          sync_prices: true,
+          sync_images: true
+        }
+      )
 
-      if (insertError) {
-        console.error('Failed to save Shopify connection:', insertError)
-      }
+      console.log('Successfully saved Shopify connection for shop:', shop)
     } catch (dbError) {
-      console.error('Unexpected error while saving Shopify connection:', dbError)
+      console.error('Failed to save Shopify connection:', dbError)
+      // If it's a duplicate key error, that means the connection already exists
+      if (dbError instanceof Error && dbError.message.includes('duplicate key')) {
+        console.log('Shopify connection already exists for this store')
+      }
+      // Don't fail the entire flow, just log the error
     }
 
     // Redirect back to connections page with success

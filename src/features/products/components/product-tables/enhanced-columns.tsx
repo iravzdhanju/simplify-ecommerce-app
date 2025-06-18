@@ -144,9 +144,14 @@ export const enhancedColumns: ColumnDef<Product>[] = [
         <div className="relative aspect-square w-12 h-12">
           <Image
             src={imageUrl || '/placeholder-product.png'}
-            alt={productName}
+            alt={productName || 'Product image'}
             fill
             className="rounded-lg object-cover"
+            onError={(e) => {
+              console.warn('Image failed to load:', imageUrl)
+              e.currentTarget.src = '/placeholder-product.png'
+            }}
+            unoptimized={imageUrl?.includes('placeholder.com')}
           />
         </div>
       )
