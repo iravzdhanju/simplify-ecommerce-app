@@ -28,7 +28,7 @@ export default function SignInViewPage({ stars }: { stars: number }) {
         <div className='absolute inset-0 bg-zinc-900' />
         <div className='relative z-20 flex items-center text-lg font-medium'>
           <Image
-            src='/assets/tt-logo.svg'
+            src='/assets/tt-logo-dark.svg'
             alt='Logo'
             width={145}
             height={38}

@@ -48,6 +48,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 import { Icons } from '../icons';
 import { OrgHeader } from '../org-header';
+import { useThemeSync } from '@/hooks/use-theme-sync';
 
 export const company = {
   name: 'Acme Inc',
@@ -62,6 +63,9 @@ export default function AppSidebar() {
   const { isOpen } = useMediaQuery();
   const { user } = useUser();
   const router = useRouter();
+
+  // Sync next-themes with Zustand store
+  useThemeSync();
 
   React.useEffect(() => {
     // Side effects based on sidebar state changes
