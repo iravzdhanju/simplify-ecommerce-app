@@ -27,7 +27,7 @@ export function DataTable<TData>({
     <div className='flex flex-1 flex-col space-y-4'>
       {children}
       <div className='overflow-hidden rounded-lg border'>
-        <ScrollArea className='h-[400px] w-full'>
+        <ScrollArea className='h-full w-full'>
           <Table>
             <TableHeader className='bg-muted sticky top-0 z-10'>
               {table.getHeaderGroups().map((headerGroup) => (

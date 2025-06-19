@@ -4,6 +4,7 @@ import { useDataTable } from '@/hooks/use-data-table';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { DataTableToolbar } from '@/components/ui/table/data-table-toolbar';
 import { ColumnDef } from '@tanstack/react-table';
+import { memo, useMemo } from 'react';
 
 interface ProductTableToolbarWrapperProps<TData, TValue> {
   data: TData[];
@@ -11,21 +12,31 @@ interface ProductTableToolbarWrapperProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
 }
 
-export function ProductTableToolbarWrapper<TData, TValue>({
+function ProductTableToolbarWrapperComponent<TData, TValue>({
   data,
   totalItems,
   columns
 }: ProductTableToolbarWrapperProps<TData, TValue>) {
   const [pageSize] = useQueryState('perPage', parseAsInteger.withDefault(10));
-  const pageCount = Math.ceil(totalItems / pageSize);
+
+  // Memoize pageCount calculation
+  const pageCount = useMemo(
+    () => Math.ceil(totalItems / pageSize),
+    [totalItems, pageSize]
+  );
 
   const { table } = useDataTable({
     data,
     columns,
-    pageCount: pageCount,
+    pageCount,
     shallow: false,
     debounceMs: 500
   });
 
   return <DataTableToolbar table={table} />;
 }
+
+// Export memoized component
+export const ProductTableToolbarWrapper = memo(
+  ProductTableToolbarWrapperComponent
+) as typeof ProductTableToolbarWrapperComponent;

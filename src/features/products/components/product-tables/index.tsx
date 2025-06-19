@@ -7,7 +7,7 @@ import { useDataTable } from '@/hooks/use-data-table';
 
 import { ColumnDef } from '@tanstack/react-table';
 import { parseAsInteger, useQueryState } from 'nuqs';
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 
 interface ProductTableParams<TData, TValue> {
   data: TData[];
@@ -15,19 +15,23 @@ interface ProductTableParams<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
 }
 
-export function ProductTable<TData, TValue>({
+function ProductTableComponent<TData, TValue>({
   data,
   totalItems,
   columns
 }: ProductTableParams<TData, TValue>) {
   const [pageSize] = useQueryState('perPage', parseAsInteger.withDefault(10));
 
-  const pageCount = Math.ceil(totalItems / pageSize);
+  // Memoize pageCount calculation
+  const pageCount = useMemo(
+    () => Math.ceil(totalItems / pageSize),
+    [totalItems, pageSize]
+  );
 
   const { table } = useDataTable({
     data, // product data
     columns, // product columns
-    pageCount: pageCount,
+    pageCount,
     shallow: false,
     debounceMs: 0,
     throttleMs: 0
@@ -41,3 +45,8 @@ export function ProductTable<TData, TValue>({
 
   return <DataTable table={table} />;
 }
+
+// Export memoized component
+export const ProductTable = memo(
+  ProductTableComponent
+) as typeof ProductTableComponent;
