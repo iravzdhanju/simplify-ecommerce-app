@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import OrganizationRedirect from '@/components/organization-redirect';
+import AuthLoading from '@/components/auth-loading';
 
 export default async function Page() {
   const { userId } = await auth();
@@ -9,6 +9,6 @@ export default async function Page() {
     return redirect('/auth/sign-in');
   }
 
-  // Let the client-side component handle organization setup check
-  return <OrganizationRedirect />;
+  // Show loading screen before redirecting to dashboard
+  return <AuthLoading />;
 }
