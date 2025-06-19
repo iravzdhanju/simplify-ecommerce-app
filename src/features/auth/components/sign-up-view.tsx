@@ -1,3 +1,5 @@
+'use client';
+
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { SignUp as ClerkSignUpForm } from '@clerk/nextjs';
@@ -6,6 +8,7 @@ import { IconStar } from '@tabler/icons-react';
 import { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useState } from 'react';
 
 export const metadata: Metadata = {
   title: 'Authentication',
@@ -13,6 +16,8 @@ export const metadata: Metadata = {
 };
 
 export default function SignUpViewPage({ stars }: { stars: number }) {
+  const [imageLoaded, setImageLoaded] = useState(false);
+
   return (
     <div className='relative h-screen flex-col items-center justify-center md:grid lg:max-w-none lg:grid-cols-2 lg:px-0'>
       <Link
@@ -25,7 +30,21 @@ export default function SignUpViewPage({ stars }: { stars: number }) {
         Sign Up
       </Link>
       <div className='bg-muted relative hidden h-full flex-col p-10 text-white lg:flex dark:border-r'>
-        <div className='absolute inset-0 bg-zinc-900' />
+        <Image
+          src='/assets/login-signup.jpg'
+          alt='Background'
+          fill
+          className={cn(
+            'absolute inset-0 object-cover transition-opacity duration-700 ease-in-out',
+            imageLoaded ? 'opacity-100' : 'opacity-0'
+          )}
+          quality={85}
+          sizes='50vw'
+          placeholder='blur'
+          blurDataURL='data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABDigMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q=='
+          onLoad={() => setImageLoaded(true)}
+        />
+        <div className='absolute inset-0 bg-black/20' />
         <div className='relative z-20 flex items-center text-lg font-medium'>
           <Image
             src='/assets/tt-logo-dark.svg'
@@ -35,7 +54,9 @@ export default function SignUpViewPage({ stars }: { stars: number }) {
             className='h-10 w-auto'
           />
         </div>
-
+        <div className='relative z-20 flex flex-1 items-center justify-center'>
+          <div className='hidden text-xl text-white'>gekki</div>
+        </div>
         {/* <div className='relative z-20 mt-auto'>
           <blockquote className='space-y-2'>
             <p className='text-lg'>hello </p>
