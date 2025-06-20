@@ -117,6 +117,8 @@ const formSchema = z.object({
   requires_shipping: z.boolean().default(true),
   weight: z.number().min(0).default(0),
   charge_tax: z.boolean().default(true),
+  sku: z.string().optional(),
+  barcode: z.string().optional(),
   variants: z.array(variantSchema).min(1, 'At least one variant is required'),
   options: z.array(optionSchema).max(3, 'Maximum 3 options allowed'),
   marketplace: z.array(z.enum(['Shopify', 'Amazon'])).min(1, {
@@ -167,6 +169,8 @@ export default function ProductForm({
     requires_shipping: true,
     weight: 0,
     charge_tax: true,
+    sku: initialData?.sku || '',
+    barcode: '',
     variants: [
       {
         title: 'Default Title',
@@ -219,6 +223,18 @@ export default function ProductForm({
         .replace(/\s+/g, '-')
         .replace(/[^a-z0-9-]/g, '');
       form.setValue('handle', handle);
+
+      // Auto-generate SKU if it's empty
+      const currentSku = form.getValues('sku');
+      if (!currentSku) {
+        const timestamp = Date.now().toString().slice(-6); // Last 6 digits of timestamp
+        const skuFromTitle = watchTitle
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, '')
+          .slice(0, 8); // Take first 8 alphanumeric characters
+        const generatedSku = `${skuFromTitle}-${timestamp}`;
+        form.setValue('sku', generatedSku);
+      }
     }
   }, [watchTitle, form, isEditing]);
 
@@ -280,7 +296,7 @@ export default function ProductForm({
         price: values.price,
         category: values.type, // Map type to category
         brand: values.vendor, // Map vendor to brand
-        sku: values.handle, // Using handle as SKU for now
+        sku: values.sku, // Use the separate SKU field
         inventory: values.quantity,
         status: values.status,
         tags: values.tags,
@@ -762,7 +778,7 @@ export default function ProductForm({
                       <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
                         <FormField
                           control={form.control}
-                          name='handle'
+                          name='sku'
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>SKU (Stock Keeping Unit)</FormLabel>
@@ -780,7 +796,7 @@ export default function ProductForm({
 
                         <FormField
                           control={form.control}
-                          name='handle'
+                          name='barcode'
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>

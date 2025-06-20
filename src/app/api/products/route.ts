@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getUserProducts, createProduct } from '@/lib/supabase/products'
 import { requireAuth } from '@/lib/supabase/auth'
 import { getActiveShopifyConnections } from '@/lib/supabase/platform-connections'
+import { ensureUserInDatabase } from '@/lib/user-management'
 import { z } from 'zod'
 
 const createProductSchema = z.object({
@@ -294,6 +295,16 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     await requireAuth()
+
+    // IMPORTANT: Ensure user exists in database before any operations
+    const user = await ensureUserInDatabase()
+    if (!user) {
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to create user record in database',
+        step: 'user_creation'
+      }, { status: 500 })
+    }
 
     const body = await req.json()
     const validatedData = createProductSchema.parse(body)

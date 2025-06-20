@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { getClerkUserId, getAuthenticatedUserId } from './auth'
+import { ensureUserInDatabase } from '@/lib/user-management'
 import type {
   PlatformConnection,
   InsertPlatformConnection,
@@ -126,6 +127,12 @@ export async function createPlatformConnection(
     throw new Error('User not authenticated')
   }
 
+  // Ensure user exists in database and get their record
+  const user = await ensureUserInDatabase()
+  if (!user) {
+    throw new Error('Failed to create or find user record in database')
+  }
+
   // TODO: Encrypt credentials before storing
   const encryptedCredentials = await encryptCredentials(credentials)
 
@@ -135,7 +142,7 @@ export async function createPlatformConnection(
   const { data, error } = await supabase
     .from('platform_connections')
     .insert({
-      user_id: null, // Skip user_id requirement for now
+      user_id: user.id, // Use the actual database user_id
       clerk_user_id: clerkUserId,
       platform,
       connection_name: connectionName,

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { getClerkUserId, getAuthenticatedUserId } from './auth'
+import { ensureUserInDatabase } from '@/lib/user-management'
 import type { Product, InsertProduct, UpdateProduct } from '@/types/database'
 import { getActiveShopifyConnections } from './platform-connections'
 
@@ -183,12 +184,10 @@ export async function createProduct(productData: Omit<InsertProduct, 'user_id' |
     throw new Error('User not authenticated')
   }
 
-  // Get user ID if available, but don't fail if we can't get it
-  let userId: string | null = null
-  try {
-    userId = await getAuthenticatedUserId()
-  } catch (error) {
-    console.warn('Could not get authenticated user ID for product creation:', error)
+  // Ensure user exists in database and get their record
+  const user = await ensureUserInDatabase()
+  if (!user) {
+    throw new Error('Failed to create or find user record in database')
   }
 
   // Use regular client with RLS - policies are configured for Clerk integration
@@ -198,7 +197,7 @@ export async function createProduct(productData: Omit<InsertProduct, 'user_id' |
     .from('products')
     .insert({
       ...productData,
-      user_id: userId, // Can be null for demo mode
+      user_id: user.id, // Use the actual database user_id
       clerk_user_id: clerkUserId,
     })
     .select()
