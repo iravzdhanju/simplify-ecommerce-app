@@ -175,24 +175,22 @@ export class ShopifyProductSync {
    * Create new product in Shopify
    */
   private async createShopifyProduct(product: Product): Promise<SyncResult> {
-    const shopifyProduct = this.transformProductForShopify(product)
+    const { productData, mediaData } = this.transformProductForShopify(product)
 
     const result = await this.client.executeQuery(
       CREATE_PRODUCT_MUTATION,
-      { input: shopifyProduct }
+      {
+        product: productData,
+        media: mediaData
+      }
     )
 
     if (result.productCreate.userErrors.length > 0) {
       const error = result.productCreate.userErrors[0]
-      throw new Error(`Shopify API error: ${error.message} (${error.code})`)
+      throw new Error(`Shopify API error: ${error.message}`)
     }
 
     const createdProduct = result.productCreate.product
-
-    // Upload images if any
-    if (product.images && product.images.length > 0) {
-      await this.uploadProductImages(createdProduct.id, product.images)
-    }
 
     // Set app-specific metafields
     await this.setProductMetafields(createdProduct.id, {
@@ -218,18 +216,17 @@ export class ShopifyProductSync {
       throw new Error('No external ID found for product, cannot update')
     }
 
-    const shopifyProduct = this.transformProductForShopify(product)
-    // @ts-ignore
-    shopifyProduct.product.id = channelMapping.external_id
+    const { productData } = this.transformProductForShopify(product)
+    productData.id = channelMapping.external_id
 
     const result = await this.client.executeQuery(
       UPDATE_PRODUCT_MUTATION,
-      { input: shopifyProduct }
+      { input: { ...productData } }
     )
 
     if (result.productUpdate.userErrors.length > 0) {
       const error = result.productUpdate.userErrors[0]
-      throw new Error(`Shopify API error: ${error.message} (${error.code})`)
+      throw new Error(`Shopify API error: ${error.message}`)
     }
 
     const updatedProduct = result.productUpdate.product
@@ -273,38 +270,46 @@ export class ShopifyProductSync {
   }
 
   /**
-   * Transform Supabase product to Shopify format
-   */
-  private transformProductForShopify(product: Product): ShopifyProductData {
-    const variants = []
+ * Transform Supabase product to Shopify ProductCreateInput format
+ */
+  private transformProductForShopify(product: Product): {
+    productData: any;
+    mediaData?: any[];
+  } {
+    // Create product options if they exist (from our form's options field)
+    const productOptions: Array<{
+      name: string;
+      values: Array<{ name: string }>;
+    }> = [];
 
-    // Create default variant with product data
-    variants.push({
-      price: product.price?.toString() || '0.00',
-      inventoryQuantity: product.inventory || 0,
-      sku: product.sku || '',
-      weight: product.weight || 0,
-      weightUnit: 'KILOGRAMS',
-      requiresShipping: true,
-      taxable: true,
-      inventoryPolicy: 'DENY' as const,
-    })
+    // For now, create a basic structure - this would be enhanced based on actual product variants
+    // You would typically derive this from the product's variants and options data
 
-    return {
-      product: {
+    const productData = {
+      title: product.title,
+      description: product.description || '',
+      descriptionHtml: product.description || '',
+      productType: product.category || '',
+      vendor: product.brand || '',
+      tags: product.tags || [],
+      status: this.mapProductStatus(product.status),
+      productOptions: productOptions,
+      seo: {
         title: product.title,
         description: product.description || '',
-        productType: product.category || '',
-        vendor: product.brand || '',
-        tags: product.tags || [],
-        status: this.mapProductStatus(product.status),
-        variants,
-        seo: {
-          title: product.title,
-          description: product.description || '',
-        },
       },
-    }
+    };
+
+    // Create media data for images
+    const mediaData = product.images?.map(imageUrl => ({
+      originalSource: imageUrl,
+      mediaContentType: 'IMAGE' as const,
+    })) || [];
+
+    return {
+      productData,
+      mediaData: mediaData.length > 0 ? mediaData : undefined
+    };
   }
 
   /**
@@ -446,7 +451,7 @@ export class ShopifyProductSync {
       sku: firstVariant?.sku || null,
       brand: shopifyProduct.vendor || null,
       category: shopifyProduct.productType || null,
-      weight: firstVariant?.weight || null,
+      weight: firstVariant?.inventoryItem?.measurement?.weight?.value || null,
       tags: shopifyProduct.tags || [],
       status: this.mapShopifyStatusToSupabase(shopifyProduct.status),
       images: shopifyProduct.images.edges.map((edge: any) => edge.node.url),

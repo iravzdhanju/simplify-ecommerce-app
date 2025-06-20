@@ -122,9 +122,25 @@ export async function GET(req: NextRequest) {
       // Don't fail the entire flow, just log the error
     }
 
+    // Trigger automatic product import in the background
+    try {
+      // Start background import without blocking the redirect
+      fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/sync/shopify/bulk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cookie': req.headers.get('Cookie') || '', // Pass authentication cookies
+        },
+      }).catch(error => {
+        console.error('Background import failed:', error)
+      })
+    } catch (error) {
+      console.error('Failed to trigger background import:', error)
+    }
+
     // Redirect back to connections page with success
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/connections?success=shopify_connected&shop=${encodeURIComponent(shop)}`
+      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/connections?success=shopify_connected&shop=${encodeURIComponent(shop)}&auto_import=started`
     )
 
   } catch (error) {

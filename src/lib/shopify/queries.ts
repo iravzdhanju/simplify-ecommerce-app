@@ -37,9 +37,15 @@ export const GET_PRODUCTS_QUERY = `
                 inventoryQuantity
                 sku
                 barcode
-                weight
-                weightUnit
-                requiresShipping
+                inventoryItem {
+                  id
+                  tracked
+                  requiresShipping
+                  weight {
+                    value
+                    unit
+                  }
+                }
                 taxable
                 inventoryPolicy
                 fulfillmentService {
@@ -137,9 +143,17 @@ export const GET_PRODUCT_BY_ID_QUERY = `
             availableForSale
             sku
             barcode
-            weight
-            weightUnit
-            requiresShipping
+            inventoryItem {
+              id
+              tracked
+              requiresShipping
+              measurement {
+                weight {
+                  value
+                  unit
+                }
+              }
+            }
             taxable
             inventoryPolicy
             fulfillmentService {
@@ -152,11 +166,6 @@ export const GET_PRODUCT_BY_ID_QUERY = `
             image {
               url
               altText
-            }
-            inventoryItem {
-              id
-              tracked
-              requiresShipping
             }
             metafields(first: 20) {
               edges {
@@ -200,24 +209,80 @@ export const GET_PRODUCT_BY_ID_QUERY = `
   }
 `
 
-// Product Mutations
+// Product Mutations - Updated to match Shopify GraphQL Admin API 2025-04
 export const CREATE_PRODUCT_MUTATION = `
-  mutation CreateProduct($input: ProductInput!) {
-    productCreate(input: $input) {
+  mutation productCreate($product: ProductCreateInput!, $media: [CreateMediaInput!]) {
+    productCreate(product: $product, media: $media) {
       product {
         id
         title
         handle
         status
         createdAt
+        productType
+        vendor
+        tags
+        description
+        descriptionHtml
+        seo {
+          title
+          description
+        }
+        options {
+          id
+          name
+          position
+          optionValues {
+            id
+            name
+            hasVariants
+          }
+        }
         variants(first: 100) {
           edges {
             node {
               id
               title
               price
+              compareAtPrice
               inventoryQuantity
               sku
+              barcode
+              inventoryItem {
+                id
+                tracked
+                requiresShipping
+                measurement {
+                  weight {
+                    value
+                    unit
+                  }
+                }
+              }
+              taxable
+              inventoryPolicy
+              selectedOptions {
+                name
+                value
+              }
+            }
+          }
+        }
+        media(first: 10) {
+          edges {
+            node {
+              id
+              mediaContentType
+              status
+              ... on MediaImage {
+                id
+                image {
+                  url
+                  altText
+                  width
+                  height
+                }
+              }
             }
           }
         }
@@ -225,7 +290,6 @@ export const CREATE_PRODUCT_MUTATION = `
       userErrors {
         field
         message
-        code
       }
     }
   }
@@ -286,7 +350,16 @@ export const CREATE_PRODUCT_VARIANT_MUTATION = `
         inventoryQuantity
         sku
         barcode
-        weight
+        inventoryItem {
+          id
+          tracked
+          measurement {
+            weight {
+              value
+              unit
+            }
+          }
+        }
         selectedOptions {
           name
           value
@@ -312,7 +385,16 @@ export const UPDATE_PRODUCT_VARIANT_MUTATION = `
         inventoryQuantity
         sku
         barcode
-        weight
+        inventoryItem {
+          id
+          tracked
+          measurement {
+            weight {
+              value
+              unit
+            }
+          }
+        }
         updatedAt
       }
       userErrors {
@@ -426,7 +508,6 @@ export const CREATE_STAGED_UPLOADS_MUTATION = `
       userErrors {
         field
         message
-        code
       }
     }
   }
@@ -449,7 +530,6 @@ export const CREATE_PRODUCT_MEDIA_MUTATION = `
       mediaUserErrors {
         field
         message
-        code
       }
     }
   }

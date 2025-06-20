@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { Product } from '@/constants/data';
-import { fakeProducts } from '@/constants/mock-api';
+import { Product } from '@/lib/api/products';
+import { productsApi } from '@/lib/api/products';
 
 interface ProductFilters {
     page: number;
@@ -79,7 +79,7 @@ export const useProductsStore = create<ProductsStore>((set, get) => ({
             setLoading(true);
             setError(null);
 
-            const data = await fakeProducts.getProducts(filters);
+            const data = await productsApi.getProducts(filters);
             setProducts(data.products);
             setTotalProducts(data.total_products);
         } catch (error) {

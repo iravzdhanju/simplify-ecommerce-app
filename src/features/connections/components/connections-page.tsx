@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Card,
   CardContent,
@@ -11,6 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import ShopifyConnectionCard from './shopify-connection-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useImportNotificationStore } from '@/stores/import-notification-store';
 import { apiRequest } from '@/lib/api-url';
 import {
   Activity,
@@ -39,6 +41,9 @@ interface ConnectionStats {
 }
 
 export default function ConnectionsPage() {
+  const searchParams = useSearchParams();
+  const { startImport } = useImportNotificationStore();
+
   const [connections, setConnections] = useState<Connection[]>([]);
   const [disconnectedConnectionIds, setDisconnectedConnectionIds] = useState<
     Set<string>
@@ -54,6 +59,28 @@ export default function ConnectionsPage() {
   useEffect(() => {
     fetchConnections();
   }, []);
+
+  // Check for auto-import trigger
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const shop = searchParams.get('shop');
+    const autoImport = searchParams.get('auto_import');
+
+    if (success === 'shopify_connected' && shop && autoImport === 'started') {
+      // Extract shop name from domain
+      const shopName = shop.replace('.myshopify.com', '');
+
+      // Start import notification
+      startImport('shopify', shopName);
+
+      // Clean up URL parameters
+      const url = new URL(window.location.href);
+      url.searchParams.delete('success');
+      url.searchParams.delete('shop');
+      url.searchParams.delete('auto_import');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [searchParams, startImport]);
 
   const fetchConnections = async () => {
     try {
