@@ -59,7 +59,7 @@ function transformProduct(supabaseProduct: any): Product {
     description: supabaseProduct.description || '',
     price: supabaseProduct.price || 0,
     category: supabaseProduct.category || 'Uncategorized',
-    photo_url: supabaseProduct.images?.[0] || '/placeholder-product.png',
+    photo_url: supabaseProduct.images?.[0] || null,
     created_at: supabaseProduct.created_at,
     updated_at: supabaseProduct.updated_at,
     marketplace: supabaseProduct.marketplace || ['Shopify'], // Default marketplace
