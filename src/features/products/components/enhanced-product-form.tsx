@@ -72,6 +72,71 @@ interface EnhancedProductFormProps {
   onSuccess?: (product: Product) => void;
 }
 
+// Full 3-Step Shopify Image Upload Handler
+async function uploadImageFile(file: File): Promise<string | null> {
+  try {
+    console.log('🚀 Starting 3-step Shopify image upload for:', file.name);
+
+    // Step 1: Stage the Upload - Call stagedUploadsCreate
+    console.log('1️⃣ Step 1: Staging upload...');
+    const stagingResponse = await fetch('/api/shopify/stage-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: file.name,
+        mimeType: file.type,
+        fileSize: file.size
+      })
+    });
+
+    if (!stagingResponse.ok) {
+      throw new Error(`Staging failed: ${stagingResponse.statusText}`);
+    }
+
+    const stagingData = await stagingResponse.json();
+    if (!stagingData.success) {
+      throw new Error(`Staging failed: ${stagingData.error}`);
+    }
+
+    const { url, resourceUrl, parameters } = stagingData.stagedTarget;
+    console.log('✅ Step 1 complete - Got staging URL and resourceUrl');
+
+    // Step 2: Upload the Image - POST to Shopify's staging URL
+    console.log('2️⃣ Step 2: Uploading image to Shopify...');
+    const formData = new FormData();
+
+    // Add all required parameters from Shopify
+    parameters.forEach((param: { name: string; value: string }) => {
+      formData.append(param.name, param.value);
+    });
+
+    // Add the file (must be last!)
+    formData.append('file', file);
+
+    const uploadResponse = await fetch(url, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      throw new Error(
+        `Upload to Shopify failed: ${uploadResponse.status} ${errorText}`
+      );
+    }
+
+    console.log('✅ Step 2 complete - Image uploaded to Shopify CDN');
+    console.log('🎯 Final CDN URL:', resourceUrl);
+
+    // Step 3 will happen in the main product creation flow
+    // We return the resourceUrl to be used in productCreate
+    return resourceUrl;
+  } catch (error) {
+    console.error('❌ 3-step upload failed for:', file.name, error);
+    return null;
+  }
+}
+
 export default function EnhancedProductForm({
   initialData,
   pageTitle,
@@ -80,6 +145,7 @@ export default function EnhancedProductForm({
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [tagsInput, setTagsInput] = useState('');
+  const [imageUrlInput, setImageUrlInput] = useState('');
 
   const isEdit = !!initialData?.id;
 
@@ -108,6 +174,60 @@ export default function EnhancedProductForm({
     try {
       setLoading(true);
 
+      // Process user-selected images - upload files and get URLs for our API
+      const imageUrls: string[] = [];
+
+      // Add URL input if provided
+      if (imageUrlInput.trim()) {
+        console.log('📸 Adding URL input:', imageUrlInput);
+        imageUrls.push(imageUrlInput.trim());
+        setImageUrlInput(''); // Clear after use
+      }
+
+      if (values.images && values.images.length > 0) {
+        console.log(
+          '📸 Processing user-selected images:',
+          values.images.length
+        );
+
+        try {
+          // Upload each selected file
+          for (let i = 0; i < values.images.length; i++) {
+            const file = values.images[i];
+            console.log(`📤 Processing file ${i + 1}:`, {
+              name: file.name,
+              size: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+              type: file.type
+            });
+
+            // Upload file and get URL
+            const uploadedUrl = await uploadImageFile(file);
+            if (uploadedUrl) {
+              imageUrls.push(uploadedUrl);
+              console.log(`✅ File ${i + 1} processed successfully`);
+            } else {
+              console.warn(`⚠️ Failed to process file ${i + 1}: ${file.name}`);
+            }
+          }
+
+          console.log('🎉 Image processing complete:', {
+            selected: values.images.length,
+            processed: imageUrls.length
+          });
+
+          if (imageUrls.length > 0) {
+            toast.success(
+              `${imageUrls.length} image(s) ready for upload to Shopify`
+            );
+          }
+        } catch (uploadError) {
+          console.error('❌ Image processing failed:', uploadError);
+          toast.error(
+            'Failed to process images. Creating product without images.'
+          );
+        }
+      }
+
       const productData: Partial<Product> = {
         name: values.name,
         description: values.description,
@@ -118,7 +238,7 @@ export default function EnhancedProductForm({
         inventory: values.inventory,
         status: values.status,
         tags: values.tags,
-        images: [] // Would handle image upload
+        images: imageUrls // Now includes actual image URLs
       };
 
       let result;
@@ -247,6 +367,47 @@ export default function EnhancedProductForm({
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
+
+                    {/* Alternative: URL Input */}
+                    <div className='space-y-3'>
+                      <div className='text-center'>
+                        <span className='bg-muted text-muted-foreground rounded-full px-3 py-1 text-sm'>
+                          OR
+                        </span>
+                      </div>
+                      <div className='flex gap-3'>
+                        <Input
+                          placeholder='Paste image URL (e.g., https://cdn.shopify.com/...)'
+                          value={imageUrlInput}
+                          onChange={(e) => setImageUrlInput(e.target.value)}
+                          disabled={loading}
+                        />
+                        <Button
+                          type='button'
+                          variant='outline'
+                          onClick={() => {
+                            if (imageUrlInput.trim()) {
+                              // Add URL to the images - this is a quick way to test
+                              // In practice, you might want to validate the URL first
+                              console.log(
+                                '📸 Adding image URL:',
+                                imageUrlInput
+                              );
+                              setImageUrlInput('');
+                              toast.success(
+                                'Image URL added - will be used when creating product'
+                              );
+                            }
+                          }}
+                          disabled={loading || !imageUrlInput.trim()}
+                        >
+                          Add URL
+                        </Button>
+                      </div>
+                      <p className='text-muted-foreground text-xs'>
+                        Use this for testing with the Shopify CDN image URL
+                      </p>
+                    </div>
                   </div>
                 )}
               />

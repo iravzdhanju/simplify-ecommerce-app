@@ -1,6 +1,7 @@
 import KBar from '@/components/kbar';
 import AppSidebar from '@/components/layout/app-sidebar';
 import Header from '@/components/layout/header';
+import { ImportNotification } from '@/components/import-notification';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
@@ -28,6 +29,8 @@ export default async function DashboardLayout({
           <div className='flex-1 overflow-auto'>{children}</div>
           {/* page main content ends */}
         </SidebarInset>
+        {/* Import notifications */}
+        <ImportNotification />
       </SidebarProvider>
     </KBar>
   );

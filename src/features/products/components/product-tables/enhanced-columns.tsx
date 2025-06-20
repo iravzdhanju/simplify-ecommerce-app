@@ -138,18 +138,31 @@ export const enhancedColumns: ColumnDef<Product>[] = [
       const imageUrl = row.getValue('photo_url') as string;
       const productName = row.getValue('name') as string;
 
+      // Don't show placeholder images - only show real images
+      if (
+        !imageUrl ||
+        imageUrl.includes('placeholder-product') ||
+        imageUrl.includes('placeholder.com')
+      ) {
+        return (
+          <div className='bg-muted text-muted-foreground flex h-12 w-12 items-center justify-center rounded-lg'>
+            <span className='text-xs'>No Image</span>
+          </div>
+        );
+      }
+
       return (
         <div className='relative aspect-square h-12 w-12'>
           <Image
-            src={imageUrl || '/placeholder-product.svg'}
+            src={imageUrl}
             alt={productName || 'Product image'}
             fill
             className='rounded-lg object-cover'
             onError={(e) => {
               console.warn('Image failed to load:', imageUrl);
-              e.currentTarget.src = '/placeholder-product.svg';
+              // Hide the image completely on error instead of showing placeholder
+              e.currentTarget.style.display = 'none';
             }}
-            unoptimized={imageUrl?.includes('placeholder.com')}
           />
         </div>
       );

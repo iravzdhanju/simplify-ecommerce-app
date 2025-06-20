@@ -1,14 +1,14 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getClerkUserId } from './auth'
-import { 
+import {
   Platform,
   SyncStatus,
   SyncOperation,
   LogStatus
 } from '@/types/database'
-import type { 
-  ChannelMapping, 
-  InsertChannelMapping, 
+import type {
+  ChannelMapping,
+  InsertChannelMapping,
   UpdateChannelMapping,
   SyncLog,
   InsertSyncLog
@@ -19,7 +19,7 @@ import type {
  */
 export async function getProductChannelMappings(productId: string): Promise<ChannelMapping[]> {
   const supabase = await createClient()
-  
+
   const { data, error } = await supabase
     .from('channel_mappings')
     .select('*')
@@ -41,9 +41,9 @@ export async function upsertChannelMapping(
   platform: Platform,
   mappingData: Partial<InsertChannelMapping>
 ): Promise<ChannelMapping> {
-  // Use service role client to bypass RLS issues
-  const supabase = createServiceRoleClient()
-  
+  // Use regular client with RLS - user should exist in database now
+  const supabase = await createClient()
+
   const { data, error } = await supabase
     .from('channel_mappings')
     .upsert({
@@ -73,7 +73,7 @@ export async function updateSyncStatus(
   errorMessage?: string
 ): Promise<void> {
   const supabase = await createClient()
-  
+
   const updateData: UpdateChannelMapping = {
     sync_status: status,
     updated_at: new Date().toISOString(),
@@ -95,7 +95,7 @@ export async function updateSyncStatus(
       .eq('product_id', productId)
       .eq('platform', platform)
       .single()
-    
+
     updateData.error_count = (existing?.error_count || 0) + 1
   }
 
@@ -126,7 +126,7 @@ export async function logSyncOperation(
   } = {}
 ): Promise<SyncLog> {
   const supabase = await createClient()
-  
+
   const { data, error } = await supabase
     .from('sync_logs')
     .insert({
@@ -158,7 +158,7 @@ export async function getProductSyncLogs(
   limit: number = 50
 ): Promise<SyncLog[]> {
   const supabase = await createClient()
-  
+
   let query = supabase
     .from('sync_logs')
     .select('*')
@@ -184,14 +184,14 @@ export async function getProductSyncLogs(
  */
 export async function getUserSyncLogs(limit: number = 100): Promise<SyncLog[]> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   try {
     const supabase = await createClient()
-    
+
     const { data, error } = await supabase
       .from('sync_logs')
       .select(`
@@ -228,14 +228,14 @@ export async function getUserSyncStats(): Promise<{
   lastSyncTime: string | null
 }> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   try {
     const supabase = await createClient()
-    
+
     // Get total syncs
     const { count: totalSyncs } = await supabase
       .from('sync_logs')
@@ -287,13 +287,13 @@ export async function getUserSyncStats(): Promise<{
  */
 export async function getProductsNeedingSync(platform?: Platform): Promise<ChannelMapping[]> {
   const clerkUserId = getClerkUserId()
-  
+
   if (!clerkUserId) {
     throw new Error('User not authenticated')
   }
 
   const supabase = await createClient()
-  
+
   let query = supabase
     .from('channel_mappings')
     .select(`

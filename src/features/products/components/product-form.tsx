@@ -10,7 +10,8 @@ import {
   FormField,
   FormItem,
   FormLabel,
-  FormMessage
+  FormMessage,
+  FormDescription
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import {
@@ -22,11 +23,19 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { AlertModal } from '@/components/modal/alert-modal';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Product } from '@/constants/mock-api';
+import { ShopifyProduct } from '@/types/index';
+import { productsApi, Product as APIProduct } from '@/lib/api/products';
+import { apiRequest } from '@/lib/api-url';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import { useState } from 'react';
+import { useForm, useFieldArray } from 'react-hook-form';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { Plus, X, Upload, ArrowLeft, HelpCircle } from 'lucide-react';
 import * as z from 'zod';
 
 const MAX_FILE_SIZE = 5000000;
@@ -37,30 +46,86 @@ const ACCEPTED_IMAGE_TYPES = [
   'image/webp'
 ];
 
+// Schema for product variants
+const variantSchema = z.object({
+  title: z.string().min(1, 'Variant title is required'),
+  price: z.number().min(0, 'Price must be positive'),
+  weight: z.number().min(0, 'Weight must be positive'),
+  compare_at_price: z.number().optional(),
+  inventory_management: z.string().optional(),
+  available: z.boolean().default(true),
+  sku: z.string().optional(),
+  requires_shipping: z.boolean().default(true),
+  taxable: z.boolean().default(true),
+  barcode: z.string().optional(),
+  option1: z.string().optional(),
+  option2: z.string().optional(),
+  option3: z.string().optional()
+});
+
+// Schema for product options
+const optionSchema = z.object({
+  name: z.string().min(1, 'Option name is required'),
+  position: z.number().min(1)
+});
+
 const formSchema = z.object({
-  image: z
+  images: z
     .any()
-    .refine((files) => files?.length == 1, 'Image is required.')
     .refine(
-      (files) => files?.[0]?.size <= MAX_FILE_SIZE,
-      `Max file size is 5MB.`
+      (files) => !files || files?.length <= 10,
+      'Maximum 10 images allowed.'
     )
     .refine(
-      (files) => ACCEPTED_IMAGE_TYPES.includes(files?.[0]?.type),
+      (files) =>
+        !files || files.every((file: File) => file?.size <= MAX_FILE_SIZE),
+      `Max file size is 5MB per image.`
+    )
+    .refine(
+      (files) =>
+        !files ||
+        files.every((file: File) => ACCEPTED_IMAGE_TYPES.includes(file?.type)),
       '.jpg, .jpeg, .png and .webp files are accepted.'
     )
     .optional(),
-  name: z.string().min(2, {
-    message: 'Product name must be at least 2 characters.'
+  title: z.string().min(2, {
+    message: 'Product title must be at least 2 characters.'
   }),
-  category: z.string(),
+  handle: z
+    .string()
+    .min(2, {
+      message: 'Product handle must be at least 2 characters.'
+    })
+    .regex(/^[a-z0-9-]+$/, {
+      message:
+        'Handle can only contain lowercase letters, numbers, and hyphens.'
+    }),
+  description: z.string().min(10, {
+    message: 'Description must be at least 10 characters.'
+  }),
+  vendor: z.string().min(1, 'Vendor is required'),
+  type: z.string().min(1, 'Product type is required'),
+  tags: z.array(z.string()).default([]),
+  published_at: z.string().optional(),
+  price: z.number().min(0, 'Price must be positive'),
+  compare_at_price: z.number().optional(),
+  cost_per_item: z.number().optional(),
+  available: z.boolean().default(true),
+  track_quantity: z.boolean().default(true),
+  quantity: z.number().min(0).default(0),
+  continue_selling: z.boolean().default(false),
+  requires_shipping: z.boolean().default(true),
+  weight: z.number().min(0).default(0),
+  charge_tax: z.boolean().default(true),
+  sku: z.string().optional(),
+  barcode: z.string().optional(),
+  variants: z.array(variantSchema).min(1, 'At least one variant is required'),
+  options: z.array(optionSchema).max(3, 'Maximum 3 options allowed'),
   marketplace: z.array(z.enum(['Shopify', 'Amazon'])).min(1, {
     message: 'Please select at least one marketplace.'
   }),
-  price: z.number(),
-  description: z.string().min(10, {
-    message: 'Description must be at least 10 characters.'
-  })
+  collections: z.array(z.string()).default([]),
+  status: z.enum(['active', 'draft', 'archived']).default('active')
 });
 
 export default function ProductForm({
@@ -76,28 +141,147 @@ export default function ProductForm({
   const [pendingFormData, setPendingFormData] = useState<z.infer<
     typeof formSchema
   > | null>(null);
+  const [tagInput, setTagInput] = useState('');
+  const [collectionInput, setCollectionInput] = useState('');
+  const [hasShopifyConnection, setHasShopifyConnection] = useState<
+    boolean | null
+  >(null);
 
   const defaultValues = {
-    name: initialData?.name || '',
-    category: initialData?.category || '',
-    marketplace:
-      initialData?.marketplace || (['Shopify'] as ('Shopify' | 'Amazon')[]),
+    title: initialData?.name || '',
+    handle:
+      initialData?.name
+        ?.toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '') || '',
+    description: initialData?.description || '',
+    vendor: '',
+    type: initialData?.category || '',
+    tags: [],
+    published_at: new Date().toISOString().split('T')[0],
     price: initialData?.price || 0,
-    description: initialData?.description || ''
+    compare_at_price: undefined,
+    cost_per_item: undefined,
+    available: true,
+    track_quantity: true,
+    quantity: 0,
+    continue_selling: false,
+    requires_shipping: true,
+    weight: 0,
+    charge_tax: true,
+    sku: initialData?.sku || '',
+    barcode: '',
+    variants: [
+      {
+        title: 'Default Title',
+        price: initialData?.price || 0,
+        weight: 0,
+        available: true,
+        requires_shipping: true,
+        taxable: true
+      }
+    ],
+    options: [],
+    marketplace: ['Shopify'] as ('Shopify' | 'Amazon')[],
+    collections: [],
+    status: 'active' as const
   };
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    values: defaultValues
+    defaultValues
   });
+
+  const {
+    fields: variantFields,
+    append: appendVariant,
+    remove: removeVariant
+  } = useFieldArray({
+    control: form.control,
+    name: 'variants'
+  });
+
+  const {
+    fields: optionFields,
+    append: appendOption,
+    remove: removeOption
+  } = useFieldArray({
+    control: form.control,
+    name: 'options'
+  });
+
+  // Auto-generate handle from title
+  const watchTitle = form.watch('title');
+  const watchPrice = form.watch('price');
+  const watchComparePrice = form.watch('compare_at_price');
+  const watchCostPerItem = form.watch('cost_per_item');
+
+  useEffect(() => {
+    if (watchTitle && !isEditing) {
+      const handle = watchTitle
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '');
+      form.setValue('handle', handle);
+
+      // Auto-generate SKU if it's empty
+      const currentSku = form.getValues('sku');
+      if (!currentSku) {
+        const timestamp = Date.now().toString().slice(-6); // Last 6 digits of timestamp
+        const skuFromTitle = watchTitle
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, '')
+          .slice(0, 8); // Take first 8 alphanumeric characters
+        const generatedSku = `${skuFromTitle}-${timestamp}`;
+        form.setValue('sku', generatedSku);
+      }
+    }
+  }, [watchTitle, form, isEditing]);
+
+  // Check for Shopify connections on component mount
+  useEffect(() => {
+    const checkShopifyConnections = async () => {
+      try {
+        const response = await apiRequest('/api/platform-connections');
+        if (response.ok) {
+          const data = await response.json();
+          const shopifyConnections =
+            data.data?.filter(
+              (conn: any) => conn.platform === 'shopify' && conn.is_active
+            ) || [];
+          setHasShopifyConnection(shopifyConnections.length > 0);
+        } else {
+          setHasShopifyConnection(false);
+        }
+      } catch (error) {
+        console.error('Error checking Shopify connections:', error);
+        setHasShopifyConnection(false);
+      }
+    };
+
+    checkShopifyConnections();
+  }, []);
+
+  // Calculate profit and margin
+  const calculateProfit = () => {
+    if (watchPrice && watchCostPerItem) {
+      return watchPrice - watchCostPerItem;
+    }
+    return 0;
+  };
+
+  const calculateMargin = () => {
+    if (watchPrice && watchCostPerItem && watchPrice > 0) {
+      return (((watchPrice - watchCostPerItem) / watchPrice) * 100).toFixed(1);
+    }
+    return '0';
+  };
 
   function onSubmit(values: z.infer<typeof formSchema>) {
     if (isEditing) {
-      // Show confirmation modal for updates
       setPendingFormData(values);
       setShowConfirmModal(true);
     } else {
-      // Direct submission for new products
       handleFormSubmission(values);
     }
   }
@@ -105,21 +289,39 @@ export default function ProductForm({
   const handleFormSubmission = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     try {
-      // Form submission logic would be implemented here
-      console.log('Form values:', values);
-      console.log('Is editing:', isEditing);
-      console.log('Product ID:', initialData?.id);
+      // Transform form data to match Product API format
+      const productData: Partial<APIProduct> = {
+        name: values.title, // Map title to name for our API
+        description: values.description,
+        price: values.price,
+        category: values.type, // Map type to category
+        brand: values.vendor, // Map vendor to brand
+        sku: values.sku, // Use the separate SKU field
+        inventory: values.quantity,
+        status: values.status,
+        tags: values.tags,
+        images: [], // Would handle image upload from values.images
+        marketplace: values.marketplace
+      };
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // You would implement actual API calls here
+      let result;
       if (isEditing) {
-        toast.success('Product updated successfully!');
-        console.log('Product updated successfully!');
+        result = await productsApi.updateProduct(initialData!.id, productData);
       } else {
-        toast.success('Product created successfully!');
-        console.log('Product created successfully!');
+        result = await productsApi.createProduct(productData);
+      }
+
+      if (result.success) {
+        toast.success(
+          `Product ${isEditing ? 'updated' : 'created'} successfully`
+        );
+
+        // Auto-sync to Shopify if marketplace includes Shopify
+        if (values.marketplace.includes('Shopify')) {
+          await handleShopifySync(result.product.id);
+        }
+      } else {
+        toast.error('Failed to save product');
       }
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -128,6 +330,29 @@ export default function ProductForm({
       setIsLoading(false);
       setShowConfirmModal(false);
       setPendingFormData(null);
+    }
+  };
+
+  const handleShopifySync = async (productId: string) => {
+    try {
+      const operation = isEditing ? 'update' : 'create';
+      console.log(
+        `Attempting to sync product ${productId} to Shopify with operation: ${operation}`
+      );
+
+      const result = await productsApi.syncToShopify(productId, operation);
+
+      console.log('Shopify sync result:', result);
+
+      if (result.success) {
+        toast.success('Product synced to Shopify successfully');
+      } else {
+        console.error('Shopify sync failed:', result.message);
+        toast.error(`Shopify sync failed: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error syncing to Shopify:', error);
+      toast.error('Failed to sync to Shopify - check console for details');
     }
   };
 
@@ -140,6 +365,54 @@ export default function ProductForm({
   const handleCancelUpdate = () => {
     setShowConfirmModal(false);
     setPendingFormData(null);
+  };
+
+  const addTag = () => {
+    if (tagInput.trim()) {
+      const currentTags = form.getValues('tags') || [];
+      if (!currentTags.includes(tagInput.trim())) {
+        form.setValue('tags', [...currentTags, tagInput.trim()]);
+        setTagInput('');
+      }
+    }
+  };
+
+  const removeTag = (tagToRemove: string) => {
+    const currentTags = form.getValues('tags') || [];
+    form.setValue(
+      'tags',
+      currentTags.filter((tag) => tag !== tagToRemove)
+    );
+  };
+
+  const addCollection = () => {
+    if (collectionInput.trim()) {
+      const currentCollections = form.getValues('collections') || [];
+      if (!currentCollections.includes(collectionInput.trim())) {
+        form.setValue('collections', [
+          ...currentCollections,
+          collectionInput.trim()
+        ]);
+        setCollectionInput('');
+      }
+    }
+  };
+
+  const removeCollection = (collectionToRemove: string) => {
+    const currentCollections = form.getValues('collections') || [];
+    form.setValue(
+      'collections',
+      currentCollections.filter(
+        (collection) => collection !== collectionToRemove
+      )
+    );
+  };
+
+  const addOption = () => {
+    appendOption({
+      name: '',
+      position: optionFields.length + 1
+    });
   };
 
   return (
@@ -156,209 +429,827 @@ export default function ProductForm({
         variant='default'
       />
 
-      <Card className='mx-auto w-full'>
-        <CardHeader>
-          <CardTitle className='text-left text-2xl font-bold'>
-            {pageTitle}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
-              <FormField
-                control={form.control}
-                name='image'
-                render={({ field }) => (
-                  <div className='space-y-6'>
-                    <FormItem className='w-full'>
-                      <FormLabel>Images</FormLabel>
-                      <FormControl>
-                        <FileUploader
-                          value={field.value}
-                          onValueChange={field.onChange}
-                          maxFiles={4}
-                          maxSize={4 * 1024 * 1024}
-                          disabled={isLoading}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                      {isEditing && initialData?.photo_url && (
-                        <div className='mt-2'>
-                          <p className='text-muted-foreground text-sm'>
-                            Current image:
-                            <img
-                              src={initialData.photo_url}
-                              alt='Current product'
-                              className='mt-2 h-20 w-20 rounded-lg object-cover'
-                            />
-                          </p>
-                        </div>
-                      )}
-                    </FormItem>
-                  </div>
-                )}
-              />
+      <div className='bg-background min-h-screen'>
+        {/* Header */}
+        <div className='border-border bg-card border-b'>
+          <div className='mx-auto max-w-7xl px-4 sm:px-6 lg:px-8'>
+            <div className='flex h-16 items-center justify-between'>
+              <div className='flex items-center gap-4'>
+                <Button variant='ghost' size='sm'>
+                  <ArrowLeft className='h-4 w-4' />
+                </Button>
+                <h1 className='text-foreground text-xl font-semibold'>
+                  {pageTitle}
+                </h1>
+              </div>
+              <div className='flex items-center gap-3'>
+                <Button variant='outline' disabled={isLoading}>
+                  Save as draft
+                </Button>
+                <Button type='submit' form='product-form' disabled={isLoading}>
+                  {isLoading
+                    ? isEditing
+                      ? 'Updating...'
+                      : 'Saving...'
+                    : isEditing
+                      ? 'Update product'
+                      : 'Save product'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
 
-              <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='name'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Product Name</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder='Enter product name'
-                          disabled={isLoading}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name='category'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Category</FormLabel>
-                      <Select
-                        onValueChange={(value) => field.onChange(value)}
-                        value={field.value}
-                        disabled={isLoading}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder='Select category' />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value='Electronics'>
-                            Electronics
-                          </SelectItem>
-                          <SelectItem value='Furniture'>Furniture</SelectItem>
-                          <SelectItem value='Clothing'>Clothing</SelectItem>
-                          <SelectItem value='Toys'>Toys</SelectItem>
-                          <SelectItem value='Groceries'>Groceries</SelectItem>
-                          <SelectItem value='Books'>Books</SelectItem>
-                          <SelectItem value='Jewelry'>Jewelry</SelectItem>
-                          <SelectItem value='Beauty Products'>
-                            Beauty Products
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name='marketplace'
-                  render={() => (
-                    <FormItem>
-                      <div className='mb-4'>
-                        <FormLabel className='text-base'>
-                          Marketplaces
-                        </FormLabel>
-                      </div>
-                      {['Shopify', 'Amazon'].map((marketplace) => (
+        <Form {...form}>
+          <form id='product-form' onSubmit={form.handleSubmit(onSubmit)}>
+            <div className='mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8'>
+              <div className='grid grid-cols-1 gap-8 lg:grid-cols-3'>
+                {/* Main Content */}
+                <div className='space-y-6 lg:col-span-2'>
+                  {/* Title */}
+                  <Card>
+                    <CardContent className='p-6'>
+                      <FormField
+                        control={form.control}
+                        name='title'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Title</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder='Short sleeve t-shirt'
+                                {...field}
+                                disabled={isLoading}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Description */}
+                      <FormField
+                        control={form.control}
+                        name='description'
+                        render={({ field }) => (
+                          <FormItem className='mt-6'>
+                            <FormLabel>Description</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                placeholder='Enter product description...'
+                                className='min-h-[120px]'
+                                {...field}
+                                disabled={isLoading}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  {/* Media */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Media</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <FormField
+                        control={form.control}
+                        name='images'
+                        render={({ field }) => (
+                          <FormItem>
+                            <div className='border-border rounded-lg border-2 border-dashed p-8 text-center'>
+                              <Upload className='text-muted-foreground mx-auto mb-4 h-12 w-12' />
+                              <div className='space-y-2'>
+                                <div className='flex justify-center gap-4'>
+                                  <Button
+                                    type='button'
+                                    variant='outline'
+                                    size='sm'
+                                  >
+                                    Upload new
+                                  </Button>
+                                  <Button
+                                    type='button'
+                                    variant='ghost'
+                                    size='sm'
+                                  >
+                                    Select existing
+                                  </Button>
+                                </div>
+                                <p className='text-muted-foreground text-sm'>
+                                  Accepts images, videos, or 3D models
+                                </p>
+                              </div>
+                              <FormControl>
+                                <FileUploader
+                                  value={field.value}
+                                  onValueChange={field.onChange}
+                                  maxFiles={10}
+                                  maxSize={4 * 1024 * 1024}
+                                  disabled={isLoading}
+                                  className='mt-4'
+                                />
+                              </FormControl>
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  {/* Pricing */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Pricing</CardTitle>
+                    </CardHeader>
+                    <CardContent className='space-y-6'>
+                      <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
                         <FormField
-                          key={marketplace}
                           control={form.control}
-                          name='marketplace'
-                          render={({ field }) => {
-                            return (
-                              <FormItem
-                                key={marketplace}
-                                className='flex flex-row items-start space-y-0 space-x-3'
-                              >
-                                <FormControl>
-                                  <Checkbox
-                                    checked={field.value?.includes(
-                                      marketplace as 'Shopify' | 'Amazon'
-                                    )}
+                          name='price'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Price</FormLabel>
+                              <FormControl>
+                                <div className='relative'>
+                                  <span className='text-muted-foreground absolute top-1/2 left-3 -translate-y-1/2'>
+                                    $
+                                  </span>
+                                  <Input
+                                    type='number'
+                                    step='0.01'
+                                    placeholder='0.00'
+                                    className='pl-8'
+                                    {...field}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        parseFloat(e.target.value) || 0
+                                      )
+                                    }
                                     disabled={isLoading}
-                                    onCheckedChange={(checked) => {
-                                      return checked
-                                        ? field.onChange([
-                                            ...field.value,
-                                            marketplace
-                                          ])
-                                        : field.onChange(
-                                            field.value?.filter(
-                                              (value) => value !== marketplace
-                                            )
-                                          );
-                                    }}
+                                  />
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name='compare_at_price'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className='flex items-center gap-1'>
+                                Compare-at price
+                                <HelpCircle className='text-muted-foreground h-4 w-4' />
+                              </FormLabel>
+                              <FormControl>
+                                <div className='relative'>
+                                  <span className='text-muted-foreground absolute top-1/2 left-3 -translate-y-1/2'>
+                                    $
+                                  </span>
+                                  <Input
+                                    type='number'
+                                    step='0.01'
+                                    placeholder='0.00'
+                                    className='pl-8'
+                                    {...field}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        parseFloat(e.target.value) || undefined
+                                      )
+                                    }
+                                    disabled={isLoading}
+                                  />
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <FormField
+                        control={form.control}
+                        name='charge_tax'
+                        render={({ field }) => (
+                          <FormItem className='flex flex-row items-start space-y-0 space-x-3'>
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                disabled={isLoading}
+                              />
+                            </FormControl>
+                            <FormLabel>Charge tax on this product</FormLabel>
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className='grid grid-cols-1 gap-4 md:grid-cols-3'>
+                        <FormField
+                          control={form.control}
+                          name='cost_per_item'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className='flex items-center gap-1'>
+                                Cost per item
+                                <HelpCircle className='text-muted-foreground h-4 w-4' />
+                              </FormLabel>
+                              <FormControl>
+                                <div className='relative'>
+                                  <span className='text-muted-foreground absolute top-1/2 left-3 -translate-y-1/2'>
+                                    $
+                                  </span>
+                                  <Input
+                                    type='number'
+                                    step='0.01'
+                                    placeholder='0.00'
+                                    className='pl-8'
+                                    {...field}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        parseFloat(e.target.value) || undefined
+                                      )
+                                    }
+                                    disabled={isLoading}
+                                  />
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <div>
+                          <label className='text-foreground mb-2 block text-sm font-medium'>
+                            Profit
+                          </label>
+                          <div className='border-input bg-muted text-muted-foreground flex h-10 items-center rounded-md border px-3 py-2'>
+                            ${calculateProfit().toFixed(2)}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className='text-foreground mb-2 block text-sm font-medium'>
+                            Margin
+                          </label>
+                          <div className='border-input bg-muted text-muted-foreground flex h-10 items-center rounded-md border px-3 py-2'>
+                            {calculateMargin()}%
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Inventory */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Inventory</CardTitle>
+                    </CardHeader>
+                    <CardContent className='space-y-6'>
+                      <FormField
+                        control={form.control}
+                        name='track_quantity'
+                        render={({ field }) => (
+                          <FormItem className='flex flex-row items-start space-y-0 space-x-3'>
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                disabled={isLoading}
+                              />
+                            </FormControl>
+                            <FormLabel>Track quantity</FormLabel>
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
+                        <FormField
+                          control={form.control}
+                          name='quantity'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Quantity</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type='number'
+                                  placeholder='0'
+                                  {...field}
+                                  onChange={(e) =>
+                                    field.onChange(
+                                      parseInt(e.target.value) || 0
+                                    )
+                                  }
+                                  disabled={isLoading}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <FormField
+                        control={form.control}
+                        name='continue_selling'
+                        render={({ field }) => (
+                          <FormItem className='flex flex-row items-start space-y-0 space-x-3'>
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                disabled={isLoading}
+                              />
+                            </FormControl>
+                            <FormLabel>
+                              Continue selling when out of stock
+                            </FormLabel>
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
+                        <FormField
+                          control={form.control}
+                          name='sku'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>SKU (Stock Keeping Unit)</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder=''
+                                  {...field}
+                                  disabled={isLoading}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name='barcode'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>
+                                Barcode (ISBN, UPC, GTIN, etc.)
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder=''
+                                  {...field}
+                                  disabled={isLoading}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Shipping */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Shipping</CardTitle>
+                    </CardHeader>
+                    <CardContent className='space-y-6'>
+                      <FormField
+                        control={form.control}
+                        name='requires_shipping'
+                        render={({ field }) => (
+                          <FormItem className='flex flex-row items-start space-y-0 space-x-3'>
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                disabled={isLoading}
+                              />
+                            </FormControl>
+                            <FormLabel>This is a physical product</FormLabel>
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
+                        <FormField
+                          control={form.control}
+                          name='weight'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Weight</FormLabel>
+                              <div className='flex'>
+                                <FormControl>
+                                  <Input
+                                    type='number'
+                                    step='0.01'
+                                    placeholder='0.0'
+                                    className='rounded-r-none'
+                                    {...field}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        parseFloat(e.target.value) || 0
+                                      )
+                                    }
+                                    disabled={isLoading}
                                   />
                                 </FormControl>
-                                <FormLabel className='font-normal'>
-                                  {marketplace}
-                                </FormLabel>
-                              </FormItem>
-                            );
-                          }}
+                                <div className='border-input bg-muted flex items-center rounded-r-md border border-l-0 px-3'>
+                                  <span className='text-muted-foreground text-sm'>
+                                    kg
+                                  </span>
+                                </div>
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
-                      ))}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name='price'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Price</FormLabel>
-                      <FormControl>
-                        <Input
-                          type='number'
-                          step='0.01'
-                          placeholder='Enter price'
-                          disabled={isLoading}
-                          {...field}
-                          onChange={(e) =>
-                            field.onChange(parseFloat(e.target.value) || 0)
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={form.control}
-                name='description'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder='Enter product description'
-                        className='resize-none'
-                        disabled={isLoading}
-                        {...field}
+                      </div>
+
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
+                        className='flex items-center gap-2'
+                      >
+                        <Plus className='h-4 w-4' />
+                        Add customs information
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Variants */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Variants</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
+                        className='flex items-center gap-2'
+                        onClick={addOption}
+                        disabled={isLoading || optionFields.length >= 3}
+                      >
+                        <Plus className='h-4 w-4' />
+                        Add options like size or color
+                      </Button>
+
+                      {optionFields.length > 0 && (
+                        <div className='mt-4 space-y-4'>
+                          {optionFields.map((field, index) => (
+                            <div
+                              key={field.id}
+                              className='flex items-end gap-2'
+                            >
+                              <FormField
+                                control={form.control}
+                                name={`options.${index}.name`}
+                                render={({ field }) => (
+                                  <FormItem className='flex-1'>
+                                    <FormLabel>Option name</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        placeholder='Size'
+                                        disabled={isLoading}
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <Button
+                                type='button'
+                                variant='ghost'
+                                size='sm'
+                                onClick={() => removeOption(index)}
+                                disabled={isLoading}
+                              >
+                                <X className='h-4 w-4' />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Search Engine Listing */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Search engine listing</CardTitle>
+                      <p className='text-muted-foreground text-sm'>
+                        Add a title and description to see how this product
+                        might appear in a search engine listing
+                      </p>
+                    </CardHeader>
+                    <CardContent>
+                      <div className='bg-muted rounded-lg p-4'>
+                        <p className='text-muted-foreground text-sm'>
+                          Preview coming soon
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Sidebar */}
+                <div className='space-y-6'>
+                  {/* Status */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Status</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <FormField
+                        control={form.control}
+                        name='status'
+                        render={({ field }) => (
+                          <FormItem>
+                            <Select
+                              onValueChange={field.onChange}
+                              value={field.value}
+                              disabled={isLoading}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value='active'>Active</SelectItem>
+                                <SelectItem value='draft'>Draft</SelectItem>
+                                <SelectItem value='archived'>
+                                  Archived
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormItem>
+                        )}
                       />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button type='submit' disabled={isLoading}>
-                {isLoading
-                  ? isEditing
-                    ? 'Updating...'
-                    : 'Adding...'
-                  : isEditing
-                    ? 'Update Product'
-                    : 'Add Product'}
-              </Button>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+                    </CardContent>
+                  </Card>
+
+                  {/* Publishing */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Publishing</CardTitle>
+                    </CardHeader>
+                    <CardContent className='space-y-4'>
+                      <div className='flex items-center gap-2'>
+                        <div className='h-2 w-2 rounded-full bg-green-500'></div>
+                        <span className='text-sm'>Online Store</span>
+                      </div>
+                      <div className='flex items-center gap-2'>
+                        <div className='h-2 w-2 rounded-full bg-green-500'></div>
+                        <span className='text-sm'>Point of Sale</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Product Organization */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Product organization</CardTitle>
+                    </CardHeader>
+                    <CardContent className='space-y-4'>
+                      <FormField
+                        control={form.control}
+                        name='type'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Type</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder=''
+                                {...field}
+                                disabled={isLoading}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='vendor'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Vendor</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder=''
+                                {...field}
+                                disabled={isLoading}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='collections'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Collections</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder='Search collections'
+                                value={collectionInput}
+                                onChange={(e) =>
+                                  setCollectionInput(e.target.value)
+                                }
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addCollection();
+                                  }
+                                }}
+                                disabled={isLoading}
+                              />
+                            </FormControl>
+                            <div className='mt-2 flex flex-wrap gap-2'>
+                              {(field.value || []).map((collection, index) => (
+                                <Badge
+                                  key={index}
+                                  variant='secondary'
+                                  className='flex items-center gap-1'
+                                >
+                                  {collection}
+                                  <button
+                                    type='button'
+                                    onClick={() => removeCollection(collection)}
+                                    className='hover:text-destructive ml-1'
+                                    disabled={isLoading}
+                                  >
+                                    <X className='h-3 w-3' />
+                                  </button>
+                                </Badge>
+                              ))}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='tags'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Tags</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder='Search tags'
+                                value={tagInput}
+                                onChange={(e) => setTagInput(e.target.value)}
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addTag();
+                                  }
+                                }}
+                                disabled={isLoading}
+                              />
+                            </FormControl>
+                            <div className='mt-2 flex flex-wrap gap-2'>
+                              {(field.value || []).map((tag, index) => (
+                                <Badge
+                                  key={index}
+                                  variant='secondary'
+                                  className='flex items-center gap-1'
+                                >
+                                  {tag}
+                                  <button
+                                    type='button'
+                                    onClick={() => removeTag(tag)}
+                                    className='hover:text-destructive ml-1'
+                                    disabled={isLoading}
+                                  >
+                                    <X className='h-3 w-3' />
+                                  </button>
+                                </Badge>
+                              ))}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  {/* Marketplace Settings */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Marketplace Settings</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <FormField
+                        control={form.control}
+                        name='marketplace'
+                        render={() => (
+                          <FormItem>
+                            <FormLabel className='text-base'>
+                              Available Marketplaces
+                            </FormLabel>
+
+                            {/* Shopify Connection Warning */}
+                            {hasShopifyConnection === false && (
+                              <Alert className='mt-4 mb-4'>
+                                <AlertDescription>
+                                  ⚠️ No Shopify store connected. To sync
+                                  products to Shopify, please{' '}
+                                  <a
+                                    href='/dashboard/connections'
+                                    className='text-primary font-medium hover:underline'
+                                    target='_blank'
+                                  >
+                                    connect your Shopify store
+                                  </a>{' '}
+                                  first.
+                                </AlertDescription>
+                              </Alert>
+                            )}
+
+                            <div className='mt-4 space-y-3'>
+                              {['Shopify', 'Amazon'].map((marketplace) => (
+                                <FormField
+                                  key={marketplace}
+                                  control={form.control}
+                                  name='marketplace'
+                                  render={({ field }) => {
+                                    const isShopifyDisabled =
+                                      marketplace === 'Shopify' &&
+                                      hasShopifyConnection === false;
+                                    return (
+                                      <FormItem
+                                        key={marketplace}
+                                        className='flex flex-row items-start space-y-0 space-x-3'
+                                      >
+                                        <FormControl>
+                                          <Checkbox
+                                            checked={field.value?.includes(
+                                              marketplace as
+                                                | 'Shopify'
+                                                | 'Amazon'
+                                            )}
+                                            disabled={
+                                              isLoading || isShopifyDisabled
+                                            }
+                                            onCheckedChange={(checked) => {
+                                              return checked
+                                                ? field.onChange([
+                                                    ...field.value,
+                                                    marketplace
+                                                  ])
+                                                : field.onChange(
+                                                    field.value?.filter(
+                                                      (value) =>
+                                                        value !== marketplace
+                                                    )
+                                                  );
+                                            }}
+                                          />
+                                        </FormControl>
+                                        <FormLabel
+                                          className={`text-base font-normal ${isShopifyDisabled ? 'text-muted-foreground' : ''}`}
+                                        >
+                                          {marketplace}
+                                          {isShopifyDisabled &&
+                                            ' (No connection)'}
+                                        </FormLabel>
+                                      </FormItem>
+                                    );
+                                  }}
+                                />
+                              ))}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </div>
+          </form>
+        </Form>
+      </div>
     </>
   );
 }

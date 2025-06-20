@@ -37,13 +37,33 @@ export const columns: ColumnDef<Product>[] = [
     accessorKey: 'photo_url',
     header: 'IMAGE',
     cell: ({ row }) => {
+      const imageUrl = row.getValue('photo_url') as string;
+
+      // Don't show placeholder images - only show real images
+      if (
+        !imageUrl ||
+        imageUrl.includes('placeholder-product') ||
+        imageUrl.includes('placeholder.com')
+      ) {
+        return (
+          <div className='bg-muted text-muted-foreground flex aspect-square items-center justify-center rounded-lg'>
+            <span className='text-xs'>No Image</span>
+          </div>
+        );
+      }
+
       return (
         <div className='relative aspect-square'>
           <Image
-            src={row.getValue('photo_url')}
+            src={imageUrl}
             alt='Product Image'
             fill
             className='rounded-lg'
+            onError={(e) => {
+              console.warn('Image failed to load:', imageUrl);
+              // Hide the image completely on error instead of showing placeholder
+              e.currentTarget.style.display = 'none';
+            }}
           />
         </div>
       );

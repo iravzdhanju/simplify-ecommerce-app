@@ -38,8 +38,7 @@ interface ShopifyBulkVariant {
   inventoryQuantity: number
   sku: string
   barcode?: string
-  weight?: number
-  weightUnit: string
+
   selectedOptions: Array<{
     name: string
     value: string
@@ -47,6 +46,12 @@ interface ShopifyBulkVariant {
   inventoryItem: {
     id: string
     tracked: boolean
+    measurement?: {
+      weight?: {
+        value: number
+        unit: string
+      }
+    }
   }
 }
 
@@ -175,8 +180,16 @@ export class ShopifyBulkSync {
                     inventoryQuantity
                     sku
                     barcode
-                    weight
-                    weightUnit
+                    inventoryItem {
+                      id
+                      tracked
+                      measurement {
+                        weight {
+                          value
+                          unit
+                        }
+                      }
+                    }
                     selectedOptions {
                       name
                       value
@@ -307,10 +320,17 @@ export class ShopifyBulkSync {
             inventoryQuantity: obj.inventoryQuantity || 0,
             sku: obj.sku || '',
             barcode: obj.barcode,
-            weight: obj.weight,
-            weightUnit: obj.weightUnit || 'KILOGRAMS',
+            inventoryItem: {
+              id: obj.inventoryItem?.id || '',
+              tracked: obj.inventoryItem?.tracked || false,
+              measurement: obj.inventoryItem?.measurement ? {
+                weight: obj.inventoryItem.measurement.weight ? {
+                  value: obj.inventoryItem.measurement.weight.value,
+                  unit: obj.inventoryItem.measurement.weight.unit || 'KILOGRAMS'
+                } : undefined
+              } : undefined
+            },
             selectedOptions: obj.selectedOptions || [],
-            inventoryItem: obj.inventoryItem || { id: '', tracked: false },
           })
         } else if ((obj.id?.includes('gid://shopify/MediaImage/') || obj.id?.includes('gid://shopify/ImageSource/')) && obj.__parentId) {
           // This is an Image
@@ -461,7 +481,7 @@ export class ShopifyBulkSync {
       sku: firstVariant?.sku || null,
       brand: shopifyProduct.vendor || null,
       category: shopifyProduct.productType || null,
-      weight: firstVariant?.weight || null,
+      weight: firstVariant?.inventoryItem?.measurement?.weight?.value || null,
       tags: shopifyProduct.tags || [],
       status: this.mapShopifyStatus(shopifyProduct.status),
       images: shopifyProduct.images.map(img => img.url),

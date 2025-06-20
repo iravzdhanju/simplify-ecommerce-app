@@ -59,7 +59,7 @@ function transformProduct(supabaseProduct: any): Product {
     description: supabaseProduct.description || '',
     price: supabaseProduct.price || 0,
     category: supabaseProduct.category || 'Uncategorized',
-    photo_url: supabaseProduct.images?.[0] || '/placeholder-product.png',
+    photo_url: supabaseProduct.images?.[0] || null,
     created_at: supabaseProduct.created_at,
     updated_at: supabaseProduct.updated_at,
     marketplace: supabaseProduct.marketplace || ['Shopify'], // Default marketplace
@@ -227,6 +227,7 @@ export const productsApi = {
    * Create a new product
    */
   async createProduct(productData: Partial<Product>): Promise<ProductResponse> {
+    console.log('productData', productData)
     try {
       // Transform UI format back to Supabase format
       const supabaseFormat = {
@@ -431,6 +432,55 @@ export const productsApi = {
           pendingSync: 0,
           errorCount: 0,
         },
+      }
+    }
+  },
+
+  /**
+   * Bulk import products from Shopify to local database
+   */
+  async bulkImportFromShopify(): Promise<{
+    success: boolean
+    message: string
+    data: {
+      imported: number
+      skipped: number
+      errors: string[]
+    }
+  }> {
+    try {
+      const response = await apiRequest('/api/sync/shopify/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      return {
+        success: data.success,
+        message: data.success ? data.message : data.error,
+        data: data.data || {
+          imported: 0,
+          skipped: 0,
+          errors: [data.error || 'Unknown error']
+        },
+      }
+    } catch (error) {
+      console.error('Error importing products from Shopify:', error)
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to import from Shopify',
+        data: {
+          imported: 0,
+          skipped: 0,
+          errors: [error instanceof Error ? error.message : 'Unknown error']
+        }
       }
     }
   },
