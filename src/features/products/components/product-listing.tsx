@@ -3,28 +3,12 @@
 import { useMemo, memo } from 'react';
 import { ProductTable } from './product-tables';
 import { columns } from './product-tables/columns';
-import { DataTableSkeleton } from '@/components/ui/table/data-table-skeleton';
 import { useProducts } from '@/hooks/use-products';
 
 type ProductListingPage = {};
 
 function ProductListingPageComponent({}: ProductListingPage) {
   const { products, totalProducts, loading, error } = useProducts();
-
-  // Memoize the skeleton component to prevent unnecessary re-renders
-  const loadingSkeleton = useMemo(
-    () => (
-      <DataTableSkeleton
-        columnCount={7}
-        rowCount={10}
-        filterCount={3}
-        withViewOptions={true}
-        withPagination={true}
-        cellWidths={['60px', 'auto', '120px', '140px', '100px', 'auto', '60px']}
-      />
-    ),
-    []
-  );
 
   // Memoize the error component
   const errorComponent = useMemo(
@@ -36,10 +20,6 @@ function ProductListingPageComponent({}: ProductListingPage) {
     [error]
   );
 
-  if (loading) {
-    return loadingSkeleton;
-  }
-
   if (error) {
     return errorComponent;
   }
@@ -49,6 +29,7 @@ function ProductListingPageComponent({}: ProductListingPage) {
       data={products}
       totalItems={totalProducts}
       columns={columns}
+      isLoading={loading}
     />
   );
 }

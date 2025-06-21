@@ -2,6 +2,7 @@
 
 import type { Table } from '@tanstack/react-table';
 import { Settings2 } from 'lucide-react';
+import { CaretSortIcon, CheckIcon } from '@radix-ui/react-icons';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -19,7 +20,6 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import * as React from 'react';
-import { CheckIcon, CaretSortIcon } from '@radix-ui/react-icons';
 
 interface DataTableViewOptionsProps<TData> {
   table: Table<TData>;
@@ -28,6 +28,9 @@ interface DataTableViewOptionsProps<TData> {
 export function DataTableViewOptions<TData>({
   table
 }: DataTableViewOptionsProps<TData>) {
+  const [, setVersion] = React.useState(0);
+  const forceUpdate = React.useCallback(() => setVersion((v) => v + 1), []);
+
   const columns = React.useMemo(
     () =>
       table
@@ -39,6 +42,9 @@ export function DataTableViewOptions<TData>({
     [table]
   );
 
+  // Calculate visible columns each render (not memoised) so count stays in sync
+  const visibleColumns = columns.filter((c) => c.getIsVisible()).length;
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -47,11 +53,14 @@ export function DataTableViewOptions<TData>({
           role='combobox'
           variant='outline'
           size='sm'
-          className='ml-auto hidden h-8 lg:flex'
+          className='ml-auto hidden h-8 gap-1 lg:flex'
         >
-          <Settings2 />
+          <Settings2 className='mr-1 h-4 w-4' />
           View
-          <CaretSortIcon className='ml-auto opacity-50' />
+          <span className='text-muted-foreground text-xs'>
+            ({visibleColumns})
+          </span>
+          <CaretSortIcon className='ml-1 opacity-50' />
         </Button>
       </PopoverTrigger>
       <PopoverContent align='end' className='w-44 p-0'>
@@ -63,19 +72,25 @@ export function DataTableViewOptions<TData>({
               {columns.map((column) => (
                 <CommandItem
                   key={column.id}
-                  onSelect={() =>
-                    column.toggleVisibility(!column.getIsVisible())
-                  }
+                  onSelect={() => {
+                    // Toggle visibility and update UI after the table state propagates
+                    column.toggleVisibility();
+                    setTimeout(forceUpdate, 0);
+                  }}
                 >
-                  <span className='truncate'>
+                  <div
+                    className={cn(
+                      'border-primary mr-2 flex size-4 items-center justify-center rounded-sm border',
+                      column.getIsVisible()
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground'
+                    )}
+                  >
+                    {column.getIsVisible() && <CheckIcon className='size-3' />}
+                  </div>
+                  <span className='flex-1 truncate'>
                     {column.columnDef.meta?.label ?? column.id}
                   </span>
-                  <CheckIcon
-                    className={cn(
-                      'ml-auto size-4 shrink-0',
-                      column.getIsVisible() ? 'opacity-100' : 'opacity-0'
-                    )}
-                  />
                 </CommandItem>
               ))}
             </CommandGroup>

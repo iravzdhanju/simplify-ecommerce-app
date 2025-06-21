@@ -8,6 +8,7 @@ interface ProductFilters {
     search?: string;
     categories?: string;
     marketplaces?: string;
+    sort?: 'newest' | 'oldest';
 }
 
 interface ProductsStore {
@@ -42,6 +43,7 @@ const initialState = {
     filters: {
         page: 1,
         limit: 10,
+        sort: 'newest'
     } as ProductFilters,
 };
 
@@ -79,7 +81,7 @@ export const useProductsStore = create<ProductsStore>((set, get) => ({
             setLoading(true);
             setError(null);
 
-            const data = await productsApi.getProducts(filters);
+            const data = await productsApi.getProducts(filters as any);
             setProducts(data.products);
             setTotalProducts(data.total_products);
         } catch (error) {

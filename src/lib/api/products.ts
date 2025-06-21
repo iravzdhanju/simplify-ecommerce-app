@@ -60,7 +60,9 @@ function transformProduct(supabaseProduct: any): Product {
     price: supabaseProduct.price || 0,
     category: supabaseProduct.category || 'Uncategorized',
     photo_url: supabaseProduct.images?.[0] || null,
-    created_at: supabaseProduct.created_at,
+    created_at:
+      // Prefer original Shopify timestamp if available
+      supabaseProduct.shopify_created_at ?? supabaseProduct.created_at,
     updated_at: supabaseProduct.updated_at,
     marketplace: supabaseProduct.marketplace || ['Shopify'], // Default marketplace
     sku: supabaseProduct.sku,
@@ -88,9 +90,11 @@ export const productsApi = {
   async getAll({
     categories = [],
     search,
+    sort = 'newest'
   }: {
     categories?: string[]
     search?: string
+    sort?: 'newest' | 'oldest'
   }): Promise<Product[]> {
     try {
       const response = await apiRequest('/api/products')
@@ -106,6 +110,19 @@ export const productsApi = {
       }
 
       let products: Product[] = data.data.map(transformProduct)
+
+      // Sort by creation date depending on sort order
+      products.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
+
+        if (isNaN(dateA) || isNaN(dateB)) return 0
+
+        if (sort === 'newest') {
+          return dateA > dateB ? -1 : dateA < dateB ? 1 : 0;
+        }
+        return dateA > dateB ? 1 : dateA < dateB ? -1 : 0;
+      })
 
       // Apply client-side filtering for categories
       if (categories.length > 0) {
@@ -141,17 +158,20 @@ export const productsApi = {
     limit = 10,
     categories,
     search,
+    sort = 'newest'
   }: {
     page?: number
     limit?: number
     categories?: string
     search?: string
+    sort?: 'newest' | 'oldest'
   }): Promise<ProductsResponse> {
     try {
       const categoriesArray = categories ? categories.split('.') : []
       const allProducts = await this.getAll({
         categories: categoriesArray,
         search,
+        sort
       })
 
       const totalProducts = allProducts.length

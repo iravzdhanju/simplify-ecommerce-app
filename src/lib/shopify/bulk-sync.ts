@@ -485,6 +485,8 @@ export class ShopifyBulkSync {
       tags: shopifyProduct.tags || [],
       status: this.mapShopifyStatus(shopifyProduct.status),
       images: shopifyProduct.images.map(img => img.url),
+      created_at: shopifyProduct.createdAt,
+      updated_at: shopifyProduct.updatedAt || shopifyProduct.createdAt,
       clerk_user_id: clerkUserId,
     }
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,11 +11,11 @@ import {
   DialogTrigger
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Icons } from '@/components/icons';
 import { useImportNotificationStore } from '@/stores/import-notification-store';
 import { productsApi } from '@/lib/api/products';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface ImportResult {
   imported: number;
@@ -28,7 +28,17 @@ export function ShopifyImportButton({
 }: {
   onImportComplete?: () => void;
 }) {
-  const { startImport, getActiveImport } = useImportNotificationStore();
+  const {
+    startImport,
+    getActiveImport,
+    hasConnection,
+    connectionLoading,
+    checkConnections,
+    updateImportProgress,
+    completeImport,
+    connections
+  } = useImportNotificationStore();
+
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -45,26 +55,58 @@ export function ShopifyImportButton({
       return;
     }
 
+    if (!hasConnection) {
+      toast.error('Please connect your Shopify store first.');
+      return;
+    }
+
     setIsImporting(true);
     setImportResult(null);
 
+    // Get the shop name from connections
+    const shopName = connections[0]?.connection_name || 'Your Store';
+
     // Start the import notification
-    const importId = startImport('shopify', 'Your Store');
+    const importId = startImport('shopify', shopName);
 
     try {
+      // Update progress to importing status
+      updateImportProgress(importId, {
+        imported: 0,
+        total: 1,
+        errors: []
+      });
+
       const result = await productsApi.bulkImportFromShopify();
 
       if (result.success) {
+        // Update final progress
+        updateImportProgress(importId, {
+          imported: result.data.imported,
+          total: result.data.imported + result.data.skipped,
+          errors: result.data.errors
+        });
+
+        // Complete the import successfully
+        completeImport(importId, true);
+
         setImportResult(result.data);
         toast.success('Manual import completed!');
         onImportComplete?.();
       } else {
+        // Complete the import with error
+        completeImport(importId, false, result.message);
+
         toast.error(result.message);
         setImportResult(result.data);
       }
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Import failed';
+
+      // Complete the import with error
+      completeImport(importId, false, errorMessage);
+
       toast.error(errorMessage);
       setImportResult({
         imported: 0,
@@ -81,25 +123,50 @@ export function ShopifyImportButton({
     setIsDialogOpen(false);
   };
 
+  const handleDialogOpen = (open: boolean) => {
+    setIsDialogOpen(open);
+    if (open && !hasConnection && !connectionLoading) {
+      // Refresh connection status when dialog opens
+      checkConnections();
+    }
+  };
+
+  // Don't show button if no connection and not loading
+  if (!connectionLoading && !hasConnection) {
+    return null;
+  }
+
   return (
-    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+    <Dialog open={isDialogOpen} onOpenChange={handleDialogOpen}>
       <DialogTrigger asChild>
         <Button
           variant='outline'
-          className='gap-2'
-          disabled={hasActiveImport || isImporting}
+          className={cn(
+            'gap-2 transition-colors',
+            hasActiveImport && 'text-primary border-primary'
+          )}
+          disabled={hasActiveImport || isImporting || connectionLoading}
         >
-          {hasActiveImport ? (
-            <Icons.spinner className='h-4 w-4 animate-spin' />
+          {connectionLoading ? (
+            <Icons.spinner className='text-muted-foreground h-4 w-4 animate-spin' />
+          ) : hasActiveImport ? (
+            <Icons.spinner className='text-primary h-4 w-4 animate-spin' />
           ) : (
             <Icons.store className='h-4 w-4' />
           )}
-          {hasActiveImport ? 'Import in Progress...' : 'Import from Shopify'}
+          {connectionLoading
+            ? 'Checking Connection...'
+            : hasActiveImport
+              ? 'Import in Progress...'
+              : 'Import from Shopify'}
         </Button>
       </DialogTrigger>
       <DialogContent className='max-w-md'>
         <DialogHeader>
-          <DialogTitle>Import Products from Shopify</DialogTitle>
+          <DialogTitle className='flex items-center gap-2'>
+            <Icons.store className='text-primary h-5 w-5' />
+            Import Products from Shopify
+          </DialogTitle>
           <DialogDescription>
             This will import all products from your connected Shopify store to
             your local database. Existing products (by SKU or title) will be
@@ -108,125 +175,162 @@ export function ShopifyImportButton({
         </DialogHeader>
 
         <div className='space-y-4'>
-          {hasActiveImport && (
-            <Alert>
-              <Icons.spinner className='h-4 w-4 animate-spin' />
+          {!hasConnection && !connectionLoading && (
+            <Alert className='border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950'>
+              <Icons.warning className='h-4 w-4 text-red-600 dark:text-red-400' />
               <AlertDescription>
-                An import is already in progress. Check the notification in the
-                bottom-right corner for progress updates.
+                <span className='font-medium text-red-800 dark:text-red-200'>
+                  No Shopify connection found
+                </span>
+                <br />
+                <span className='text-sm text-red-700 dark:text-red-300'>
+                  Please connect your Shopify store first from the Connections
+                  page.
+                </span>
               </AlertDescription>
             </Alert>
           )}
 
-          {!importResult && !isImporting && !hasActiveImport && (
-            <Alert>
-              <Icons.help className='h-4 w-4' />
-              <AlertDescription>
-                This process may take a few minutes depending on how many
-                products you have. You can continue using the app while import
-                runs in the background.
+          {!importResult && !isImporting && hasConnection && (
+            <Alert className='border-primary/20 bg-primary/5'>
+              <Icons.help className='text-primary h-4 w-4' />
+              <AlertDescription className='text-muted-foreground'>
+                This process may take a few minutes depending on the number of
+                products in your store.
               </AlertDescription>
             </Alert>
           )}
 
           {isImporting && (
-            <div className='flex items-center justify-center py-8'>
-              <div className='space-y-3 text-center'>
-                <Icons.spinner className='mx-auto h-8 w-8 animate-spin' />
-                <p className='text-muted-foreground text-sm'>
-                  Importing products from Shopify...
-                </p>
-                <p className='text-muted-foreground text-xs'>
-                  This may take a few minutes
-                </p>
-              </div>
-            </div>
+            <Alert className='border-primary/20 bg-primary/5'>
+              <Icons.spinner className='text-primary h-4 w-4 animate-spin' />
+              <AlertDescription>
+                <span className='text-primary font-medium'>
+                  Import in progress...
+                </span>
+                <br />
+                <span className='text-muted-foreground text-sm'>
+                  Please don't close this dialog. You can track progress in the
+                  notification.
+                </span>
+              </AlertDescription>
+            </Alert>
           )}
 
           {importResult && (
-            <div className='space-y-4'>
-              <div className='grid grid-cols-2 gap-4'>
-                <div className='rounded-lg bg-green-50 p-3 text-center dark:bg-green-950'>
-                  <div className='text-2xl font-bold text-green-600 dark:text-green-400'>
-                    {importResult.imported}
-                  </div>
-                  <div className='text-sm text-green-600 dark:text-green-400'>
-                    Imported
-                  </div>
-                </div>
-                <div className='rounded-lg bg-yellow-50 p-3 text-center dark:bg-yellow-950'>
-                  <div className='text-2xl font-bold text-yellow-600 dark:text-yellow-400'>
-                    {importResult.skipped}
-                  </div>
-                  <div className='text-sm text-yellow-600 dark:text-yellow-400'>
-                    Skipped
-                  </div>
-                </div>
-              </div>
-
-              {importResult.errors.length > 0 && (
-                <Alert variant='destructive'>
-                  <Icons.warning className='h-4 w-4' />
+            <div className='space-y-3'>
+              {importResult.imported > 0 && (
+                <Alert className='border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950'>
+                  <Icons.check className='h-4 w-4 text-green-600 dark:text-green-400' />
                   <AlertDescription>
-                    <div className='space-y-1'>
-                      <p className='font-medium'>
-                        {importResult.errors.length} error(s) occurred:
-                      </p>
-                      <div className='max-h-32 space-y-1 overflow-y-auto'>
-                        {importResult.errors.slice(0, 3).map((error, index) => (
-                          <p key={index} className='font-mono text-xs'>
-                            {error}
-                          </p>
-                        ))}
-                        {importResult.errors.length > 3 && (
-                          <p className='text-muted-foreground text-xs'>
-                            ...and {importResult.errors.length - 3} more errors
-                          </p>
-                        )}
-                      </div>
-                    </div>
+                    <span className='font-medium text-green-800 dark:text-green-200'>
+                      Successfully imported {importResult.imported} products!
+                    </span>
                   </AlertDescription>
                 </Alert>
               )}
 
-              <div className='flex gap-2'>
-                <Button onClick={resetDialog} className='flex-1'>
-                  Done
-                </Button>
-                {importResult.imported > 0 && (
-                  <Button
-                    variant='outline'
-                    onClick={() => {
-                      resetDialog();
-                      window.location.reload();
-                    }}
-                    className='flex-1'
-                  >
-                    Refresh Page
-                  </Button>
-                )}
-              </div>
+              {importResult.skipped > 0 && (
+                <Alert className='border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950'>
+                  <Icons.help className='h-4 w-4 text-yellow-600 dark:text-yellow-400' />
+                  <AlertDescription>
+                    <span className='text-yellow-800 dark:text-yellow-200'>
+                      {importResult.skipped} products were skipped (already
+                      exist)
+                    </span>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {importResult.errors.length > 0 && (
+                <Alert className='border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950'>
+                  <Icons.warning className='h-4 w-4 text-red-600 dark:text-red-400' />
+                  <AlertDescription>
+                    <span className='font-medium text-red-800 dark:text-red-200'>
+                      {importResult.errors.length} errors occurred:
+                    </span>
+                    <ul className='mt-2 space-y-1 text-sm text-red-700 dark:text-red-300'>
+                      {importResult.errors.slice(0, 3).map((error, index) => (
+                        <li key={index} className='list-inside list-disc'>
+                          {error}
+                        </li>
+                      ))}
+                      {importResult.errors.length > 3 && (
+                        <li className='text-xs text-red-600 dark:text-red-400'>
+                          ... and {importResult.errors.length - 3} more errors
+                        </li>
+                      )}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
           )}
 
-          {!importResult && !isImporting && (
-            <div className='flex gap-2'>
+          <div className='flex gap-2 pt-2'>
+            {!isImporting && !importResult && hasConnection && (
+              <>
+                <Button
+                  onClick={handleImport}
+                  disabled={hasActiveImport}
+                  className='flex-1'
+                >
+                  {hasActiveImport ? (
+                    <>
+                      <Icons.spinner className='mr-2 h-4 w-4 animate-spin' />
+                      Import in Progress
+                    </>
+                  ) : (
+                    <>
+                      <Icons.store className='mr-2 h-4 w-4' />
+                      Start Import
+                    </>
+                  )}
+                </Button>
+                <Button variant='outline' onClick={resetDialog}>
+                  Cancel
+                </Button>
+              </>
+            )}
+
+            {!isImporting && !importResult && !hasConnection && (
               <Button
-                onClick={resetDialog}
                 variant='outline'
+                onClick={() =>
+                  (window.location.href = '/dashboard/connections')
+                }
                 className='flex-1'
               >
-                Cancel
+                <Icons.link className='mr-2 h-4 w-4' />
+                Go to Connections
               </Button>
+            )}
+
+            {isImporting && (
               <Button
-                onClick={handleImport}
+                variant='outline'
+                onClick={resetDialog}
                 className='flex-1'
-                disabled={hasActiveImport}
               >
-                {hasActiveImport ? 'Import Active' : 'Start Import'}
+                Close (Import Continues)
               </Button>
-            </div>
-          )}
+            )}
+
+            {importResult && (
+              <>
+                <Button
+                  onClick={() => (window.location.href = '/dashboard/product')}
+                  className='flex-1'
+                >
+                  <Icons.store className='mr-2 h-4 w-4' />
+                  View Products
+                </Button>
+                <Button variant='outline' onClick={resetDialog}>
+                  Close
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

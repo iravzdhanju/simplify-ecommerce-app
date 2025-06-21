@@ -122,6 +122,23 @@
   }
 }
 
+/* Animation for import success notification */
+@keyframes pulse-once {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
+}
+
+.animate-pulse-once {
+  animation: pulse-once 1.5s ease-in-out;
+}
+
 /* View Transition Wave Effect */
 ::view-transition-old(root),
 ::view-transition-new(root) {

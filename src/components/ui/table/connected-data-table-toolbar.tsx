@@ -1,6 +1,7 @@
 'use client';
 
 import { DataTableToolbar } from './data-table-toolbar';
+import { DataTableSortSelect } from './data-table-sort-select';
 import { useDataTableStore } from '@/stores/data-table-store';
 
 export default function ConnectedDataTableToolbar() {
@@ -9,5 +10,9 @@ export default function ConnectedDataTableToolbar() {
   if (!table) return null;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return <DataTableToolbar table={table as any} />;
+  return (
+    <DataTableToolbar table={table as any}>
+      <DataTableSortSelect />
+    </DataTableToolbar>
+  );
 }

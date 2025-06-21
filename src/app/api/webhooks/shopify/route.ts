@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 import crypto from 'crypto'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { logSyncOperation, updateSyncStatus } from '@/lib/supabase/sync'
 import { Platform, LogStatus, SyncStatus, SyncOperation } from '@/types/database'
 
@@ -163,17 +163,22 @@ async function processShopifyWebhook(
   } catch (error) {
     console.error(`Error processing webhook ${topic}:`, error)
 
-    // Log the error for debugging
-    await logSyncOperation(
-      'webhook',
-      Platform.SHOPIFY,
-      'webhook' as SyncOperation,
-      LogStatus.ERROR,
-      {
-        message: `Webhook processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        requestData: { topic, shop, webhookId, eventData },
-      }
-    )
+    // Log the error for debugging - using service role client to bypass RLS
+    try {
+      const supabase = createServiceRoleClient()
+      await supabase
+        .from('sync_logs')
+        .insert({
+          product_id: null, // Webhook-level log, not tied to specific product
+          platform: Platform.SHOPIFY,
+          operation: 'webhook' as SyncOperation,
+          status: LogStatus.ERROR,
+          message: `Webhook processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          request_data: { topic, shop, webhookId, eventData },
+        })
+    } catch (logError) {
+      console.error('Failed to log webhook error:', logError)
+    }
   }
 }
 
@@ -185,37 +190,97 @@ async function handleProductCreate(
   shop: string,
   webhookId: string
 ): Promise<void> {
-  const supabase = await createClient()
+  // Use service-role client so that we bypass RLS when acting on behalf of the user
+  const supabase = createServiceRoleClient()
 
-  // Check if we have a reverse mapping (product created outside our app)
-  const { data: mapping } = await supabase
+  // 1.  Check if this Shopify product is already mapped
+  const { data: existingMapping } = await supabase
     .from('channel_mappings')
     .select('product_id')
     .eq('platform', Platform.SHOPIFY)
     .eq('external_id', product.id.toString())
-    .single()
+    .limit(1)
+    .maybeSingle()
 
-  if (mapping) {
-    // Product already exists in our system, update it
+  if (existingMapping) {
+    // Product already exists → treat this as an update instead
     await handleProductUpdate(product, shop, webhookId)
     return
   }
 
-  // This is a new product created outside our app
-  // We could optionally import it to our system
-  console.log(`New product created in Shopify: ${product.id} - ${product.title}`)
+  // 2. Locate the platform connection so we can associate the new product with the correct user
+  const { data: connection } = await supabase
+    .from('platform_connections')
+    .select('user_id, clerk_user_id')
+    .eq('platform', Platform.SHOPIFY)
+    .eq('credentials->>shop_domain', shop)
+    .single()
 
-  await logSyncOperation(
-    'external',
-    Platform.SHOPIFY,
-    'create' as SyncOperation,
-    LogStatus.SUCCESS,
-    {
-      message: `External product created: ${product.title}`,
-      requestData: { webhookId, productId: product.id },
-      responseData: product,
-    }
-  )
+  if (!connection) {
+    console.warn(`No platform connection found for shop ${shop}. Skipping product import.`)
+    return
+  }
+
+  const firstVariant = product.variants[0]
+
+  // 3. Insert the new product
+  const { data: newProduct, error: prodError } = await supabase
+    .from('products')
+    .insert({
+      user_id: connection.user_id,
+      clerk_user_id: connection.clerk_user_id,
+      title: product.title,
+      description: product.body_html.replace(/<[^>]*>/g, ''),
+      price: firstVariant ? parseFloat(firstVariant.price) : null,
+      inventory: firstVariant ? firstVariant.inventory_quantity : 0,
+      sku: firstVariant ? firstVariant.sku : null,
+      brand: product.vendor,
+      category: product.product_type,
+      tags: product.tags ? product.tags.split(',').map(tag => tag.trim()) : [],
+      status: mapShopifyStatus(product.status),
+      images: product.images.map(img => img.src),
+      created_at: product.created_at,
+      updated_at: product.updated_at,
+    })
+    .select()
+    .single()
+
+  if (prodError || !newProduct) {
+    throw new Error(`Failed to insert product ${product.id}: ${prodError?.message}`)
+  }
+
+  // 4. Broadcast real-time event
+  const channel = supabase.channel(`notifications:${newProduct.clerk_user_id}`);
+  await channel.send({
+    type: 'broadcast',
+    event: 'product:update',
+    payload: { message: `New product "${newProduct.title}" imported from Shopify.` }
+  });
+
+  // 5. Create the channel mapping so future webhooks resolve quickly
+  await supabase
+    .from('channel_mappings')
+    .upsert({
+      product_id: newProduct.id,
+      platform: Platform.SHOPIFY,
+      external_id: product.id.toString(),
+      sync_status: SyncStatus.SUCCESS,
+      last_synced: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'external_id,platform' })
+
+  // 6. Log the operation using service role client
+  await supabase
+    .from('sync_logs')
+    .insert({
+      product_id: newProduct.id,
+      platform: Platform.SHOPIFY,
+      operation: 'create' as SyncOperation,
+      status: LogStatus.SUCCESS,
+      message: `Product imported from Shopify create webhook`,
+      request_data: { webhookId, productId: product.id },
+      response_data: product,
+    })
 }
 
 /**
@@ -226,15 +291,22 @@ async function handleProductUpdate(
   shop: string,
   webhookId: string
 ): Promise<void> {
-  const supabase = await createClient()
+  // Use service-role client to avoid RLS issues and guarantee update
+  const supabase = createServiceRoleClient()
 
   // Find the product in our system
-  const { data: mapping } = await supabase
+  const { data: mapping, error: mapErr } = await supabase
     .from('channel_mappings')
     .select('product_id, products(*)')
     .eq('platform', Platform.SHOPIFY)
     .eq('external_id', product.id.toString())
-    .single()
+    .limit(1)
+    .maybeSingle()
+
+  if (mapErr) {
+    console.warn('Mapping fetch error:', mapErr.message)
+    return
+  }
 
   if (!mapping) {
     console.log(`Product not found in our system: ${product.id}`)
@@ -255,16 +327,24 @@ async function handleProductUpdate(
       .update({
         title: product.title,
         description: product.body_html.replace(/<[^>]*>/g, ''), // Strip HTML
-        price: firstVariant ? parseFloat(firstVariant.price) : localProduct.price as unknown as number,
-        inventory: firstVariant ? firstVariant.inventory_quantity : localProduct.inventory as unknown as number,
-        brand: product.vendor || localProduct.brand as unknown as string,
-        category: product.product_type || localProduct.category as unknown as string,
-        tags: product.tags ? product.tags.split(',').map(tag => tag.trim()) : localProduct.tags as unknown as string[],
+        price: firstVariant ? parseFloat(firstVariant.price) : null,
+        inventory: firstVariant ? firstVariant.inventory_quantity : null,
+        brand: product.vendor,
+        category: product.product_type,
+        tags: product.tags ? product.tags.split(',').map(tag => tag.trim()) : [],
         status: mapShopifyStatus(product.status),
         images: product.images.map(img => img.src),
         updated_at: new Date().toISOString(),
       })
       .eq('id', mapping.product_id)
+
+    // Broadcast real-time event
+    const channel = supabase.channel(`notifications:${localProduct.clerk_user_id}`);
+    await channel.send({
+      type: 'broadcast',
+      event: 'product:update',
+      payload: { message: `Product "${product.title}" updated from Shopify.` }
+    });
 
     await updateSyncStatus(
       mapping.product_id,
@@ -272,17 +352,18 @@ async function handleProductUpdate(
       SyncStatus.SUCCESS
     )
 
-    await logSyncOperation(
-      mapping.product_id,
-      Platform.SHOPIFY,
-      'update' as SyncOperation,
-      LogStatus.SUCCESS,
-      {
+    // Log using service role client to ensure webhook can write
+    await supabase
+      .from('sync_logs')
+      .insert({
+        product_id: mapping.product_id,
+        platform: Platform.SHOPIFY,
+        operation: 'update' as SyncOperation,
+        status: LogStatus.SUCCESS,
         message: `Product updated from Shopify webhook`,
-        requestData: { webhookId, productId: product.id },
-        responseData: product,
-      }
-    )
+        request_data: { webhookId, productId: product.id },
+        response_data: product,
+      })
   }
 }
 
@@ -294,12 +375,12 @@ async function handleProductDelete(
   shop: string,
   webhookId: string
 ): Promise<void> {
-  const supabase = await createClient()
+  const supabase = createServiceRoleClient()
 
   // Find the product in our system
   const { data: mapping } = await supabase
     .from('channel_mappings')
-    .select('product_id')
+    .select('product_id, products(user_id, clerk_user_id, title)')
     .eq('platform', Platform.SHOPIFY)
     .eq('external_id', product.id.toString())
     .single()
@@ -308,6 +389,8 @@ async function handleProductDelete(
     console.log(`Deleted product not found in our system: ${product.id}`)
     return
   }
+
+  const localProduct = Array.isArray(mapping.products) ? mapping.products[0] : mapping.products as any;
 
   // Mark the channel mapping as deleted
   await supabase
@@ -320,17 +403,28 @@ async function handleProductDelete(
     .eq('product_id', mapping.product_id)
     .eq('platform', Platform.SHOPIFY)
 
-  await logSyncOperation(
-    mapping.product_id,
-    Platform.SHOPIFY,
-    'delete' as SyncOperation,
-    LogStatus.SUCCESS,
-    {
+  // Broadcast real-time event before logging and completing
+  if (localProduct) {
+    const channel = supabase.channel(`notifications:${localProduct.clerk_user_id}`);
+    await channel.send({
+      type: 'broadcast',
+      event: 'product:update',
+      payload: { message: `Product "${localProduct.title}" deleted from Shopify.` }
+    });
+  }
+
+  // Log using service role client
+  await supabase
+    .from('sync_logs')
+    .insert({
+      product_id: mapping.product_id,
+      platform: Platform.SHOPIFY,
+      operation: 'delete' as SyncOperation,
+      status: LogStatus.SUCCESS,
       message: `Product deleted in Shopify`,
-      requestData: { webhookId, productId: product.id },
-      responseData: product,
-    }
-  )
+      request_data: { webhookId, productId: product.id },
+      response_data: product,
+    })
 }
 
 /**
@@ -347,24 +441,27 @@ async function handleInventoryUpdate(
   // This would require mapping inventory items to our products
   // Implementation depends on how we track inventory in our system
 
-  await logSyncOperation(
-    'inventory',
-    Platform.SHOPIFY,
-    'update' as SyncOperation,
-    LogStatus.SUCCESS,
-    {
-      message: `Inventory updated`,
-      requestData: { webhookId, inventoryItemId: eventData.inventory_item_id },
-      responseData: eventData,
-    }
-  )
+  // Log inventory update using service role client to bypass RLS
+  try {
+    const supabase = createServiceRoleClient()
+    await supabase
+      .from('sync_logs')
+      .insert({
+        product_id: null, // Inventory-level log, not tied to specific product yet
+        platform: Platform.SHOPIFY,
+        operation: 'update' as SyncOperation,
+        status: LogStatus.SUCCESS,
+        message: `Inventory updated`,
+        request_data: { webhookId, inventoryItemId: eventData.inventory_item_id },
+        response_data: eventData,
+      })
+  } catch (logError) {
+    console.error('Failed to log inventory update:', logError)
+  }
 }
 
-/**
- * Map Shopify status to our internal status
- */
 function mapShopifyStatus(shopifyStatus: string): string {
-  switch (shopifyStatus) {
+  switch (shopifyStatus.toLowerCase()) {
     case 'active':
       return 'active'
     case 'archived':

@@ -14,6 +14,7 @@ import ShopifyConnectionCard from './shopify-connection-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useImportNotificationStore } from '@/stores/import-notification-store';
 import { apiRequest } from '@/lib/api-url';
+
 import {
   Activity,
   CheckCircle2,
@@ -42,7 +43,8 @@ interface ConnectionStats {
 
 export default function ConnectionsPage() {
   const searchParams = useSearchParams();
-  const { startImport } = useImportNotificationStore();
+  const { startImport, refreshConnections, forceReset } =
+    useImportNotificationStore();
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [disconnectedConnectionIds, setDisconnectedConnectionIds] = useState<
@@ -58,7 +60,9 @@ export default function ConnectionsPage() {
 
   useEffect(() => {
     fetchConnections();
-  }, []);
+    // Also refresh the store connections
+    refreshConnections();
+  }, [refreshConnections]);
 
   // Check for auto-import trigger
   useEffect(() => {
@@ -70,8 +74,18 @@ export default function ConnectionsPage() {
       // Extract shop name from domain
       const shopName = shop.replace('.myshopify.com', '');
 
-      // Start import notification
-      startImport('shopify', shopName);
+      // First refresh connections to ensure store has latest state
+      const triggerImport = async () => {
+        await refreshConnections();
+
+        // Small delay to ensure state is updated
+        setTimeout(() => {
+          // Start import notification
+          startImport('shopify', shopName);
+        }, 500);
+      };
+
+      triggerImport();
 
       // Clean up URL parameters
       const url = new URL(window.location.href);
@@ -80,7 +94,7 @@ export default function ConnectionsPage() {
       url.searchParams.delete('auto_import');
       window.history.replaceState({}, '', url.toString());
     }
-  }, [searchParams, startImport]);
+  }, [searchParams, startImport, refreshConnections]);
 
   const fetchConnections = async () => {
     try {
@@ -113,6 +127,12 @@ export default function ConnectionsPage() {
       (conn) => conn.id !== connectionId
     );
     updateStats(updatedConnections);
+
+    // Refresh store connections as well
+    refreshConnections();
+
+    // Force stop all polling since connection is deleted
+    forceReset();
   };
 
   const updateStats = (connections: Connection[]) => {

@@ -3,6 +3,7 @@
 import { useDataTable } from '@/hooks/use-data-table';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { DataTableToolbar } from '@/components/ui/table/data-table-toolbar';
+import { DataTableSortSelect } from '@/components/ui/table/data-table-sort-select';
 import { ColumnDef } from '@tanstack/react-table';
 import { memo, useMemo } from 'react';
 
@@ -33,7 +34,11 @@ function ProductTableToolbarWrapperComponent<TData, TValue>({
     debounceMs: 500
   });
 
-  return <DataTableToolbar table={table} />;
+  return (
+    <DataTableToolbar table={table}>
+      <DataTableSortSelect />
+    </DataTableToolbar>
+  );
 }
 
 // Export memoized component
