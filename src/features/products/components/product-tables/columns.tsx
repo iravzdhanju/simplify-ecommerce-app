@@ -36,6 +36,11 @@ export const columns: ColumnDef<Product>[] = [
   {
     accessorKey: 'photo_url',
     header: 'IMAGE',
+    size: 80,
+    minSize: 80,
+    maxSize: 80,
+    enableResizing: false,
+    enableSorting: false,
     cell: ({ row }) => {
       const imageUrl = row.getValue('photo_url') as string;
 
@@ -72,6 +77,9 @@ export const columns: ColumnDef<Product>[] = [
   {
     id: 'name',
     accessorKey: 'name',
+    size: 200,
+    minSize: 150,
+    maxSize: 300,
     header: ({ column }: { column: Column<Product, unknown> }) => (
       <DataTableColumnHeader column={column} title='Name' />
     ),
@@ -82,11 +90,15 @@ export const columns: ColumnDef<Product>[] = [
       variant: 'text',
       icon: Text
     },
-    enableColumnFilter: true
+    enableColumnFilter: true,
+    enableSorting: false
   },
   {
     id: 'category',
     accessorKey: 'category',
+    size: 120,
+    minSize: 100,
+    maxSize: 150,
     header: ({ column }: { column: Column<Product, unknown> }) => (
       <DataTableColumnHeader column={column} title='Category' />
     ),
@@ -104,11 +116,15 @@ export const columns: ColumnDef<Product>[] = [
       label: 'categories',
       variant: 'multiSelect',
       options: CATEGORY_OPTIONS
-    }
+    },
+    enableSorting: false
   },
   {
     id: 'marketplace',
     accessorKey: 'marketplace',
+    size: 150,
+    minSize: 120,
+    maxSize: 200,
     header: ({ column }: { column: Column<Product, unknown> }) => (
       <DataTableColumnHeader column={column} title='Marketplace' />
     ),
@@ -136,24 +152,71 @@ export const columns: ColumnDef<Product>[] = [
       variant: 'multiSelect',
       options: MARKETPLACE_OPTIONS,
       icon: Store
-    }
+    },
+    enableSorting: false
   },
   {
     accessorKey: 'price',
-    header: 'PRICE'
+    header: 'PRICE',
+    size: 100,
+    minSize: 80,
+    maxSize: 120,
+    enableSorting: false
+  },
+  {
+    accessorKey: 'created_at',
+    header: 'CREATED',
+    size: 180,
+    minSize: 150,
+    maxSize: 250,
+    cell: ({ cell }) => {
+      const dateStr = cell.getValue<Product['created_at']>() as
+        | string
+        | undefined;
+      if (!dateStr) return null;
+      const dateObj = new Date(dateStr);
+      const formatted = dateObj.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit'
+      });
+      const time = dateObj.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      return (
+        <div className='whitespace-nowrap' title={`${formatted} ${time}`}>
+          {formatted} <span className='text-muted-foreground'>{time}</span>
+        </div>
+      );
+    },
+    enableSorting: false
   },
   {
     accessorKey: 'description',
     header: 'DESCRIPTION',
+    size: 250,
+    minSize: 200,
+    maxSize: 400,
     cell: ({ cell }) => {
       const raw = cell.getValue<Product['description']>() || '';
       const cleaned = stripHtml(raw);
       const truncated = truncate(cleaned, 55);
-      return <div title={cleaned}>{truncated}</div>;
-    }
+      return (
+        <div className='max-w-[240px] truncate' title={cleaned}>
+          {truncated}
+        </div>
+      );
+    },
+    enableSorting: false
   },
   {
     id: 'actions',
-    cell: ({ row }) => <CellAction data={row.original} />
+    size: 80,
+    minSize: 80,
+    maxSize: 80,
+    enableResizing: false,
+    cell: ({ row }) => <CellAction data={row.original} />,
+    enableSorting: false
   }
 ];

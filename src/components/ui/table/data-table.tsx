@@ -12,16 +12,21 @@ import {
 } from '@/components/ui/table';
 import { getCommonPinningStyles } from '@/lib/data-table';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface DataTableProps<TData> extends React.ComponentProps<'div'> {
   table: TanstackTable<TData>;
   actionBar?: React.ReactNode;
+  isLoading?: boolean;
+  rowCount?: number;
 }
 
 export function DataTable<TData>({
   table,
   actionBar,
-  children
+  children,
+  isLoading,
+  rowCount = 10
 }: DataTableProps<TData>) {
   return (
     <div className='flex flex-1 flex-col space-y-4'>
@@ -52,7 +57,22 @@ export function DataTable<TData>({
               ))}
             </TableHeader>
             <TableBody>
-              {table.getRowModel().rows?.length ? (
+              {isLoading ? (
+                Array.from({ length: rowCount }).map((_, i) => (
+                  <TableRow key={`skeleton-${i}`}>
+                    {table.getAllColumns().map((column) => (
+                      <TableCell
+                        key={column.id}
+                        style={{
+                          ...getCommonPinningStyles({ column })
+                        }}
+                      >
+                        <Skeleton className='h-6 w-full' />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : table.getRowModel().rows?.length ? (
                 table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}

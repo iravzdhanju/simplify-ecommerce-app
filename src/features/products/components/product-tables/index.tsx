@@ -13,12 +13,14 @@ interface ProductTableParams<TData, TValue> {
   data: TData[];
   totalItems: number;
   columns: ColumnDef<TData, TValue>[];
+  isLoading?: boolean;
 }
 
 function ProductTableComponent<TData, TValue>({
   data,
   totalItems,
-  columns
+  columns,
+  isLoading
 }: ProductTableParams<TData, TValue>) {
   const [pageSize] = useQueryState('perPage', parseAsInteger.withDefault(10));
 
@@ -43,7 +45,7 @@ function ProductTableComponent<TData, TValue>({
     setTable(table);
   }, [table, setTable]);
 
-  return <DataTable table={table} />;
+  return <DataTable table={table} isLoading={isLoading} />;
 }
 
 // Export memoized component

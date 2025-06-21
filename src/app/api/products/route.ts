@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/supabase/auth'
 import { getActiveShopifyConnections } from '@/lib/supabase/platform-connections'
 import { ensureUserInDatabase } from '@/lib/user-management'
 import { z } from 'zod'
+import { createClient } from '@/lib/supabase/server'
 
 const createProductSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -230,7 +231,9 @@ async function createProductInShopify(productData: any) {
       shopifyId: createdProduct.id,
       variantId: firstVariant?.id,
       handle: createdProduct.handle,
-      shopDomain: credentials.shop_domain
+      shopDomain: credentials.shop_domain,
+      createdAt: createdProduct.createdAt,
+      updatedAt: createdProduct.updatedAt ?? createdProduct.updated_at ?? new Date().toISOString()
     }
 
   } catch (error) {
@@ -309,6 +312,24 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const validatedData = createProductSchema.parse(body)
 
+    // Duplicates check: prevent pushing identical title or SKU
+    const existingProducts = await getUserProducts();
+    const isDuplicate = existingProducts.some((p) => {
+      const sameTitle = p.title.trim().toLowerCase() === validatedData.title.trim().toLowerCase();
+      const sameSku = p.sku && validatedData.sku && p.sku.trim().toLowerCase() === validatedData.sku.trim().toLowerCase();
+      return sameTitle || sameSku;
+    });
+
+    if (isDuplicate) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Duplicate product detected. A product with the same name or SKU already exists.'
+        },
+        { status: 409 }
+      );
+    }
+
     // Step 1: Create product in Shopify FIRST
     try {
       const shopifyResult = await createProductInShopify(validatedData)
@@ -321,8 +342,31 @@ export async function POST(req: NextRequest) {
         }, { status: 400 })
       }
 
-      // Step 2: Save to Supabase 
-      const localProduct = await createProduct(validatedData)
+      // After successful creation in Shopify but BEFORE saving locally, ensure we don't already have a mapping for this Shopify product
+      const supabaseClient = await createClient();
+      const { data: existingMapping } = await supabaseClient
+        .from('channel_mappings')
+        .select('id')
+        .eq('external_id', shopifyResult.shopifyId)
+        .eq('platform', 'shopify')
+        .single();
+
+      if (existingMapping) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Product already exists in the system for this Shopify item.'
+          },
+          { status: 409 }
+        );
+      }
+
+      // Step 2: Save to Supabase, include Shopify timestamps
+      const localProduct = await createProduct({
+        ...validatedData,
+        created_at: shopifyResult.createdAt,
+        updated_at: shopifyResult.updatedAt
+      })
 
       // Step 3: Create channel mapping to link local and Shopify products
       const { upsertChannelMapping } = await import('@/lib/supabase/sync')
