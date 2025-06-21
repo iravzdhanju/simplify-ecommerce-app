@@ -5,6 +5,7 @@ import { ImportNotification } from '@/components/import-notification';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
+import { RealtimeToast } from '@/components/realtime-toast';
 
 export const metadata: Metadata = {
   title: 'Next Shadcn Dashboard Starter',
@@ -31,6 +32,7 @@ export default async function DashboardLayout({
         </SidebarInset>
         {/* Import notifications */}
         <ImportNotification />
+        <RealtimeToast />
       </SidebarProvider>
     </KBar>
   );

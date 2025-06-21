@@ -249,7 +249,15 @@ async function handleProductCreate(
     throw new Error(`Failed to insert product ${product.id}: ${prodError?.message}`)
   }
 
-  // 4. Create the channel mapping so future webhooks resolve quickly
+  // 4. Broadcast real-time event
+  const channel = supabase.channel(`notifications:${newProduct.clerk_user_id}`);
+  await channel.send({
+    type: 'broadcast',
+    event: 'product:update',
+    payload: { message: `New product "${newProduct.title}" imported from Shopify.` }
+  });
+
+  // 5. Create the channel mapping so future webhooks resolve quickly
   await supabase
     .from('channel_mappings')
     .upsert({
@@ -261,7 +269,7 @@ async function handleProductCreate(
       updated_at: new Date().toISOString(),
     }, { onConflict: 'external_id,platform' })
 
-  // 5. Log the operation using service role client
+  // 6. Log the operation using service role client
   await supabase
     .from('sync_logs')
     .insert({
@@ -330,6 +338,14 @@ async function handleProductUpdate(
       })
       .eq('id', mapping.product_id)
 
+    // Broadcast real-time event
+    const channel = supabase.channel(`notifications:${localProduct.clerk_user_id}`);
+    await channel.send({
+      type: 'broadcast',
+      event: 'product:update',
+      payload: { message: `Product "${product.title}" updated from Shopify.` }
+    });
+
     await updateSyncStatus(
       mapping.product_id,
       Platform.SHOPIFY,
@@ -364,7 +380,7 @@ async function handleProductDelete(
   // Find the product in our system
   const { data: mapping } = await supabase
     .from('channel_mappings')
-    .select('product_id')
+    .select('product_id, products(user_id, clerk_user_id, title)')
     .eq('platform', Platform.SHOPIFY)
     .eq('external_id', product.id.toString())
     .single()
@@ -373,6 +389,8 @@ async function handleProductDelete(
     console.log(`Deleted product not found in our system: ${product.id}`)
     return
   }
+
+  const localProduct = Array.isArray(mapping.products) ? mapping.products[0] : mapping.products as any;
 
   // Mark the channel mapping as deleted
   await supabase
@@ -384,6 +402,16 @@ async function handleProductDelete(
     })
     .eq('product_id', mapping.product_id)
     .eq('platform', Platform.SHOPIFY)
+
+  // Broadcast real-time event before logging and completing
+  if (localProduct) {
+    const channel = supabase.channel(`notifications:${localProduct.clerk_user_id}`);
+    await channel.send({
+      type: 'broadcast',
+      event: 'product:update',
+      payload: { message: `Product "${localProduct.title}" deleted from Shopify.` }
+    });
+  }
 
   // Log using service role client
   await supabase
@@ -432,11 +460,8 @@ async function handleInventoryUpdate(
   }
 }
 
-/**
- * Map Shopify status to our internal status
- */
 function mapShopifyStatus(shopifyStatus: string): string {
-  switch (shopifyStatus) {
+  switch (shopifyStatus.toLowerCase()) {
     case 'active':
       return 'active'
     case 'archived':
